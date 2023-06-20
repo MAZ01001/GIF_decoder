@@ -597,11 +597,11 @@ decodeGIF("https://upload.wikimedia.org/wikipedia/commons/a/a2/Wax_fire.gif",asy
                 offscreenContext.putImageData(previousImageData,0,0);
             break;
         }
-        //? so apparently most GIFs seam to set the disposal method of the last frame wrong...so this is a "fix" for that (clear after the last frame)
-        if(frameI+1===gif.frames.length)offscreenContext.clearRect(0,0,offscreenCanvas.width,offscreenCanvas.height);
         if(++frameI>=gif.frames.length){
-            frameI=0;
             if(--loopCount<=0)return;
+            frameI=0;
+            //? so apparently some GIFs seam to set the disposal method of the last frame wrong?...so this is a "fix" for that (clear after the last frame)
+            offscreenContext.clearRect(0,0,offscreenCanvas.width,offscreenCanvas.height);
         }
         setTimeout(update,gif.frames[frameI].delayTime);
     }

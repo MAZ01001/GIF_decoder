@@ -564,10 +564,22 @@ progressBar.style.left="50%";
 progressBar.style.top="50%";
 progressBar.style.transform="translate(-50%,-50%)";
 
+let frameMemoryUsage=0;
+
+/**@type {(num:number)=>string} adds `'` for each 3 digits (from the right) in `num`*/
+const _fNum_=num=>{
+    "use strict";
+    let n=num.toString();
+    const offset=n.length%3;
+    for(let i=offset===0?3:offset;i<n.length;i+=4)n=`${n.substring(0,i)}'${n.substring(i)}`;
+    return n;
+};
+
 decodeGIF(gifURL,async(percentageRead,frameCount,frameUpdate,framePos,gifSize)=>{
     progressBar.value=percentageRead;
     ctx.drawImage(await createImageBitmap(frameUpdate),(canvas.width-gifSize[0])*.5+framePos[0],(canvas.height-gifSize[1])*.5+framePos[1]);
-    const text=`frame ${frameCount}`,
+    frameMemoryUsage+=frameUpdate.data.length;
+    const text=`frame ${_fNum_(frameCount)} (${_fNum_(frameMemoryUsage)} Bytes)`,
         textMet=ctx.measureText(text),
         textpos=[(canvas.width-textMet.width)*.5,canvas.height*.5-(textMet.actualBoundingBoxAscent+textMet.actualBoundingBoxDescent)];
     ctx.strokeStyle="white";

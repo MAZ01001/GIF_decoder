@@ -498,6 +498,30 @@ const getGIFLoopAmount=gif=>{
     return NaN;
 }
 
+//~  _   _______ _        ___                                       _
+//~ | | | | ___ \ |      / _ \                                     | |
+//~ | | | | |_/ / |     / /_\ \_ __ __ _ _   _ _ __ ___   ___ _ __ | |_ ___
+//~ | | | |    /| |     |  _  | '__/ _` | | | | '_ ` _ \ / _ \ '_ \| __/ __|
+//~ | |_| | |\ \| |____ | | | | | | (_| | |_| | | | | | |  __/ | | | |_\__ \
+//~  \___/\_| \_\_____/ \_| |_/_|  \__, |\__,_|_| |_| |_|\___|_| |_|\__|___/
+//~                                 __/ |
+//~                                |___/
+
+let _forceClearLastFrame_=true,
+    _alertErrors_=true,
+    _gifURL_="https://upload.wikimedia.org/wikipedia/commons/a/a2/Wax_fire.gif";
+const args=window.location.search;
+if(args.length>1)
+    for(const arg of args.substring(1).split('&'))
+        switch(true){
+            case/^forceClearLastFrame=[01]$/.test(arg):_forceClearLastFrame_=arg.substring(0x14)==='1';break;
+            case/^alertErrors=[01]$/.test(arg):_alertErrors_=arg.substring(0xC)==='1';break;
+            case/^gifURL=.+$/.test(arg):_gifURL_=decodeURIComponent(arg.substring(7));break;
+        }
+const forceClearLastFrame=_forceClearLastFrame_,
+    alertErrors=_alertErrors_,
+    gifURL=_gifURL_;
+
 //~  _____ ___________                      _
 //~ |  __ \_   _|  ___|                    | |
 //~ | |  \/ | | | |_     _ __ ___ _ __   __| | ___ _ __
@@ -540,7 +564,7 @@ progressBar.style.left="50%";
 progressBar.style.top="50%";
 progressBar.style.transform="translate(-50%,-50%)";
 
-decodeGIF("https://upload.wikimedia.org/wikipedia/commons/a/a2/Wax_fire.gif",async(percentageRead,frameCount,frameUpdate,framePos,gifSize)=>{
+decodeGIF(gifURL,async(percentageRead,frameCount,frameUpdate,framePos,gifSize)=>{
     progressBar.value=percentageRead;
     ctx.drawImage(await createImageBitmap(frameUpdate),(canvas.width-gifSize[0])*.5+framePos[0],(canvas.height-gifSize[1])*.5+framePos[1]);
     const text=`frame ${frameCount}`,
@@ -568,6 +592,7 @@ decodeGIF("https://upload.wikimedia.org/wikipedia/commons/a/a2/Wax_fire.gif",asy
         ctx.clearRect(0,0,canvas.width,canvas.height);
         const pos=[(canvas.width-gif.width)*.5,(canvas.height-gif.height)*.5];
         const frame=gif.frames[frameI];
+        // TODO when printing image account for > gif.pixelAspectRatio
         switch(frame.disposalMethod){
             case DisposalMethod.UndefinedA://! fall through
             case DisposalMethod.UndefinedB://! fall through
@@ -601,9 +626,12 @@ decodeGIF("https://upload.wikimedia.org/wikipedia/commons/a/a2/Wax_fire.gif",asy
             if(--loopCount<=0)return;
             frameI=0;
             //? so apparently some GIFs seam to set the disposal method of the last frame wrong?...so this is a "fix" for that (clear after the last frame)
-            offscreenContext.clearRect(0,0,offscreenCanvas.width,offscreenCanvas.height);
+            if(forceClearLastFrame)offscreenContext.clearRect(0,0,offscreenCanvas.width,offscreenCanvas.height);
         }
         setTimeout(update,gif.frames[frameI].delayTime);
     }
     setTimeout(update,0);
-}).catch(err=>console.error(err));
+}).catch(err=>{
+    console.error(err);
+    if(alertErrors)alert(err?.message??err);
+});

@@ -10,9 +10,9 @@
 
 /**
  * @typedef {Object} GIF
- * @property {number} width the width of the image in pixels (locical screen size)
- * @property {number} height the height of the image in pixels (locical screen size)
- * @property {number} totalTime the total duration of the gif in milliseconds (all delays added together) - will be infinite if there is a frame with 0 delay
+ * @property {number} width the width of the image in pixels (logical screen size)
+ * @property {number} height the height of the image in pixels (logical screen size)
+ * @property {number} totalTime the total duration of the gif in milliseconds (all delays added together) - will be `Infinity` if there is a frame with the user input delay flag set and no timeout
  * @property {number} colorRes the color depth/resolution in bits per color (in the original) [1-8 bits]
  * @property {number} pixelAspectRatio if non zero the pixel aspect ratio will be from 4:1 to 1:4 in 1/64th increments
  * @property {boolean} sortFlag if the colors in the global color table are ordered after decreasing importance
@@ -24,7 +24,7 @@
  * @typedef {Object} ApplicationExtension
  * @property {string} identifier 8 character string identifying the application
  * @property {string} authenticationCode 3 bytes to authenticate the application identifier
- * @property {Uint8Array} data the data of this application extension
+ * @property {Uint8Array} data the (raw) data of this application extension
  * @typedef {Object} Frame
  * @property {number} left the position of the left edge of this frame, in pixels, within the gif (from the left edge)
  * @property {number} top the position of the top edge of this frame, in pixels, within the gif (from the top edge)
@@ -467,10 +467,16 @@ const decodeGIF=async(gifURL,progressCallback,avgAlpha)=>{
                             transparencyIndex=-1;
                             incrementFrameIndex=false;
                         }
-                        //~ artificial delay so other processes get some processing time
-                        await new Promise(end=>setTimeout(end,0));
                     }while(!await parseBlock(byteStream,gif,getframeIndex,getTransparencyIndex));
                     gif.frames.length--;
+                    for(const frame of gif.frames){
+                        //~ set total time to infinity if the user input delay flag is set and there is no timeout
+                        if(frame.userInputDelayFlag&&frame.delayTime===0){
+                            gif.totalTime=Infinity;
+                            break;
+                        }
+                        gif.totalTime+=frame.delayTime;
+                    }
                     resolve(gif);
                     return;
                 }catch(error){
@@ -640,6 +646,7 @@ decodeGIF(gifURL,async(percentageRead,frameCount,frameUpdate,framePos,gifSize)=>
             //? so apparently some GIFs seam to set the disposal method of the last frame wrong?...so this is a "fix" for that (clear after the last frame)
             if(forceClearLastFrame)offscreenContext.clearRect(0,0,offscreenCanvas.width,offscreenCanvas.height);
         }
+        // TODO add a "press any key" when user input delay flag is set for this frame (and timeout when delay time is non-zero)
         setTimeout(update,gif.frames[frameI].delayTime);
     }
     setTimeout(update,0);

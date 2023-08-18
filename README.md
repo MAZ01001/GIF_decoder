@@ -49,8 +49,8 @@ The `GIF` object constructed has the following attributes.
     <tr><td><code>delayTime</code></td><td><code>number</code></td><td>the delay of this frame in milliseconds</td></tr>
     <tr><td><code>sortFlag</code></td><td><code>boolean</code></td><td>if the colors in the local color table are ordered after decreasing importance</td></tr>
     <tr><td><code>localColorTable</code></td><td><code>[number,number,number][]</code></td><td>the local color table for this frame</td></tr>
-    <tr><td><code>reserved</code></td><td><code>number</code></td><td>_reserved for future use_ (from packed field in image descriptor block)</td></tr>
-    <tr><td><code>GCreserved</code></td><td><code>number</code></td><td>_reserved for future use_ (from packed field in graphics control extension block)</td></tr>
+    <tr><td><code>reserved</code></td><td><code>number</code></td><td><i>reserved for future use</i> (from packed field in image descriptor block)</td></tr>
+    <tr><td><code>GCreserved</code></td><td><code>number</code></td><td><i>reserved for future use</i> (from packed field in graphics control extension block)</td></tr>
   </table>
 </details>
 

@@ -2,13 +2,15 @@
 
 GIF decoding and rendering with HTML5 canvas
 
-- [Type documentation](#type-documentation)
-  - [`GIF` attributes](#gif-attributes)
-  - [`Frame` attributes](#frame-attributes)
-  - [`DisposalMethod` attributes (enum)](#disposalmethod-attributes-enum)
-  - [`PlainTextData` attributes](#plaintextdata-attributes)
-  - [`ApplicationExtension` attributes](#applicationextension-attributes)
-- [Available URL parameters](#available-url-parameters)
+Here is a [live website](https://maz01001.github.io/GIF_decoder/ "Open a live preview of this code") to see this code working, with the [URL parameters](#available-url-parameters "scroll down to the Available URL parameters section") specified below.
+
+- [Type documentation](#type-documentation "scroll down to the Type documentation section")
+  - [`GIF` attributes](#gif-attributes "scroll down to the `GIF` attributes section")
+  - [`Frame` attributes](#frame-attributes "scroll down to the `Frame` attributes section")
+  - [`DisposalMethod` attributes (enum)](#disposalmethod-attributes-enum "scroll down to the `DisposalMethod` attributes (enum) section")
+  - [`PlainTextData` attributes](#plaintextdata-attributes "scroll down to the `PlainTextData` attributes section")
+  - [`ApplicationExtension` attributes](#applicationextension-attributes "scroll down to the `ApplicationExtension` attributes section")
+- [Available URL parameters](#available-url-parameters "scroll down to the Available URL parameters section")
 
 ## Type documentation
 

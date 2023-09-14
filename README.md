@@ -24,15 +24,15 @@ The `GIF` object constructed has the following attributes.
 | ----------------------- | -------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
 | `width`                 | `number`                   | the width of the image in pixels (logical screen size)                                                                                                                    |
 | `height`                | `number`                   | the height of the image in pixels (logical screen size)                                                                                                                   |
-| `totalTime`             | `number`                   | the total duration of the gif in milliseconds (all delays added together) <br/> will be `Infinity` if there is a frame with the user input delay flag set and no timeout  |
+| `totalTime`             | `number`                   | the total duration of the gif in milliseconds (all delays added together) <br> will be `Infinity` if there is a frame with the user input delay flag set and no timeout  |
 | `colorRes`              | `number`                   | the color depth/resolution in bits per color (in the original) [1-8 bits]                                                                                                 |
 | `pixelAspectRatio`      | `number`                   | if non zero the pixel aspect ratio will be from 4:1 to 1:4 in 1/64th increments                                                                                           |
 | `sortFlag`              | `boolean`                  | if the colors in the global color table are ordered after decreasing importance                                                                                           |
 | `globalColorTable`      | `[number,number,number][]` | the global color table for the GIF                                                                                                                                        |
-| `backgroundImage`       | `ImageData`                | an image filled with the background color (can be used as a background before the first frame) <br/> if the global color table is not available this is transparent black |
-| `frames`                | `Frame[]`                  | each frame of the GIF (decoded into single images) <br/> [type information further below](#frame-attributes "Scroll to `Frame` definition")                               |
+| `backgroundImage`       | `ImageData`                | an image filled with the background color (can be used as a background before the first frame) <br> if the global color table is not available this is transparent black |
+| `frames`                | `Frame[]`                  | each frame of the GIF (decoded into single images) <br> [type information further below](#frame-attributes "Scroll to `Frame` definition")                               |
 | `comments`              | `[number,string][]`        | comments in the file and on with frame they where found                                                                                                                   |
-| `applicationExtensions` | `ApplicationExtension[]`   | all application extensions found <br/> [type information further below](#applicationextension-attributes "Scroll to `ApplicationExtension` definition")                   |
+| `applicationExtensions` | `ApplicationExtension[]`   | all application extensions found <br> [type information further below](#applicationextension-attributes "Scroll to `ApplicationExtension` definition")                   |
 
 </details>
 
@@ -46,9 +46,9 @@ The `GIF` object constructed has the following attributes.
 | `top`                | `number`                   | the position of the top edge of this frame, in pixels, within the gif (from the top edge)                                                                                        |
 | `width`              | `number`                   | the width of this frame in pixels                                                                                                                                                |
 | `height`             | `number`                   | the height of this frame in pixels                                                                                                                                               |
-| `disposalMethod`     | `DisposalMethod`           | the disposal method for this frame <br/> [type information further below](#disposalmethod-attributes-enum "Scroll to `DisposalMethod` definition")                               |
+| `disposalMethod`     | `DisposalMethod`           | the disposal method for this frame <br> [type information further below](#disposalmethod-attributes-enum "Scroll to `DisposalMethod` definition")                               |
 | `image`              | `ImageData`                | this frames image data                                                                                                                                                           |
-| `plainTextData`      | `PlainTextData\|null`      | the text that will be displayed on screen with this frame (if not null) <br/> [type information further below](#plaintextdata-attributes "Scroll to `PlainTextData` definition") |
+| `plainTextData`      | `PlainTextData\|null`      | the text that will be displayed on screen with this frame (if not null) <br> [type information further below](#plaintextdata-attributes "Scroll to `PlainTextData` definition") |
 | `userInputDelayFlag` | `boolean`                  | if set waits for user input before rendering the next frame (timeout after delay if that is non-zero)                                                                            |
 | `delayTime`          | `number`                   | the delay of this frame in milliseconds                                                                                                                                          |
 | `sortFlag`           | `boolean`                  | if the colors in the local color table are ordered after decreasing importance                                                                                                   |
@@ -62,7 +62,7 @@ The `GIF` object constructed has the following attributes.
 
 <details open><summary>Click to toggle table</summary>
 
-| Name                | Internal value <br/> (`number`) | Description           | Action                                                  |
+| Name                | Internal value <br> (`number`) | Description           | Action                                                  |
 | ------------------- | ------------------------------- | --------------------- | ------------------------------------------------------- |
 | `Replace`           | `0`                             | unspecified           | replaces entire frame                                   |
 | `Combine`           | `1`                             | do not dispose        | combine with previous frame                             |
@@ -113,7 +113,7 @@ URL parameters can be in any order (_starting with `?` after the URL then parame
 
 | Name                  | Possible values                                       | Description                                                                           | Default value                                                                                                         |
 | --------------------- | ----------------------------------------------------- | ------------------------------------------------------------------------------------- | --------------------------------------------------------------------------------------------------------------------- |
-| `gifURL`              | HTML image source (URL) <br/> (encoded URI component) | the GIF to decode and render                                                          | [this GIF from Wikipedia](https://upload.wikimedia.org/wikipedia/commons/a/a2/Wax_fire.gif "Open Wikipedia GIF file") |
+| `gifURL`              | HTML image source (URL) <br> (encoded URI component) | the GIF to decode and render                                                          | [this GIF from Wikipedia](https://upload.wikimedia.org/wikipedia/commons/a/a2/Wax_fire.gif "Open Wikipedia GIF file") |
 | `alertErrors`         | 0 or 1                                                | Errors while decoding will open an alert pop-up                                       | `1`                                                                                                                   |
 | `forceClearLastFrame` | 0 or 1                                                | Forces to clear the screen after the last frame, regardless of what the GIF file says | `1`                                                                                                                   |
 

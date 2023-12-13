@@ -504,6 +504,278 @@ const getGIFLoopAmount=gif=>{
     return NaN;
 }
 
+//~  _   _ ________  ___ _       _____ _                           _
+//~ | | | |_   _|  \/  || |     |  ___| |                         | |
+//~ | |_| | | | | .  . || |     | |__ | | ___ _ __ ___   ___ _ __ | |_ ___
+//~ |  _  | | | | |\/| || |     |  __|| |/ _ \ '_ ` _ \ / _ \ '_ \| __/ __|
+//~ | | | | | | | |  | || |____ | |___| |  __/ | | | | |  __/ | | | |_\__ \
+//~ \_| |_/ \_/ \_|  |_/\_____/ \____/|_|\___|_| |_| |_|\___|_| |_|\__|___/
+
+// TODO change input to span / table cell !
+
+/** HTML elements in DOM */
+const html=Object.freeze({
+    /** @type {HTMLDivElement} Main container *///@ts-ignore element does exist in DOM
+    box: document.getElementById("box"),
+    /** GIF view box */
+    view: Object.freeze({
+        /** @type {HTMLDivElement} View box container *///@ts-ignore element does exist in DOM
+        view: document.getElementById("gifView"),
+        /** @type {HTMLInputElement} Button to scale {@linkcode html.view.view} to browser width (over info panel and controls) via class `full` *///@ts-ignore element does exist in DOM
+        fullWindow: document.getElementById("fullWindow"),
+        /** @type {HTMLInputElement} Button to toggle {@linkcode html.view.htmlCanvas} between fit to {@linkcode html.view.view} (default) and actual size (pan with drag controls if GIF is larger than container) via class `real` *///@ts-ignore element does exist in DOM
+        fitWindow: document.getElementById("fitWindow"),
+        /** @type {HTMLInputElement} Button to cycle {@linkcode html.view.canvas} image smoothing (OFF → low (default) → medium → high) *///@ts-ignore element does exist in DOM
+        imgSmoothing: document.getElementById("imgSmoothing"),
+        /** @type {HTMLCanvasElement} The main GIF canvas (HTML) *///@ts-ignore element does exist in DOM
+        htmlCanvas: document.getElementById("htmlCanvas"),
+        /** @type {CanvasRenderingContext2D} The main GIF canvas (2D context of {@linkcode html.view.htmlCanvas}) *///@ts-ignore element does exist in DOM
+        canvas: document.getElementById("htmlCanvas").getContext("2d",{colorSpace:"srgb"})
+    }),
+    /** GIF controls (under {@linkcode html.view.view}) */
+    controls: Object.freeze({
+        /** @type {HTMLInputElement} Disabled slider for GIF time progress in milliseconds (uses tickmarks of {@linkcode html.controls.timeTickmarks}) *///@ts-ignore element does exist in DOM
+        timeRange: document.getElementById("timeRange"),
+        /** @type {HTMLSpanElement} Displays current timestamp of GIF playback in milliseconds (next to {@linkcode html.controls.timeRange}) *///@ts-ignore element does exist in DOM
+        time: document.getElementById("time"),
+        /** @type {HTMLDataListElement} List of timestamps (milliseconds) for tickmarks under {@linkcode html.controls.timeRange} (`<option>MS_TIMESTAMP</option>`) *///@ts-ignore element does exist in DOM
+        timeTickmarks: document.getElementById("timeTickmarks"),
+        /** @type {HTMLInputElement} Interactible slider for frame selection *///@ts-ignore element does exist in DOM
+        frameRange: document.getElementById("frameRange"),
+        /** @type {HTMLSpanElement} Displays current frame index (next to {@linkcode html.controls.frameRange}) *///@ts-ignore element does exist in DOM
+        frame: document.getElementById("frame"),
+        /** @type {HTMLInputElement} Button to go to the first frame of the GIF (and pause playback) *///@ts-ignore element does exist in DOM
+        seekStart: document.getElementById("seekStart"),
+        /** @type {HTMLInputElement} Button to go to the previous frame of the GIF (and pause playback) *///@ts-ignore element does exist in DOM
+        seekPrevious: document.getElementById("seekPrevious"),
+        /** @type {HTMLInputElement} Button to play GIF in reverse *///@ts-ignore element does exist in DOM
+        reverse: document.getElementById("reverse"),
+        /** @type {HTMLInputElement} Button to pause GIF playback *///@ts-ignore element does exist in DOM
+        pause: document.getElementById("pause"),
+        /** @type {HTMLInputElement} Button to start GIF playback *///@ts-ignore element does exist in DOM
+        play: document.getElementById("play"),
+        /** @type {HTMLInputElement} Button to go to the next frame of the GIF (and pause playback) *///@ts-ignore element does exist in DOM
+        seekNext: document.getElementById("seekNext"),
+        /** @type {HTMLInputElement} Button to go to the last frame of the GIF (and pause playback) *///@ts-ignore element does exist in DOM
+        seekEnd: document.getElementById("seekEnd"),
+        /** @type {HTMLFieldSetElement} Container for user input controls (highlight via class `waiting` when waiting for user input) *///@ts-ignore element does exist in DOM
+        userInputField: document.getElementById("userInputField"),
+        /** @type {HTMLInputElement} Disabled slider to show timeout (milliseconds) for user input delay (use class `infinity` if this frame has no timeout and `none` if this frame does not need user input) *///@ts-ignore element does exist in DOM
+        userInputTimeout: document.getElementById("userInputTimeout"),
+        /** @type {HTMLSpanElement} Shows timeout for user input in milliseconds (see {@linkcode html.controls.userInputTimeout}) *///@ts-ignore element does exist in DOM
+        userInputTimeoutTime: document.getElementById("userInputTimeoutTime"),
+        /** @type {HTMLInputElement} Button to toggle user input lock (ON / OFF (default)) if ON, does not wait and continues playback instantly *///@ts-ignore element does exist in DOM
+        userInputLock: document.getElementById("userInputLock"),
+        /** @type {HTMLInputElement} Button for user input, continues playback when waiting for user input *///@ts-ignore element does exist in DOM
+        userInput: document.getElementById("userInput")
+    }),
+    /** @type {HTMLDivElement} Main info panel container *///@ts-ignore element does exist in DOM
+    infoPanels: document.getElementById("infoPanels"),
+    /** GIF info panel (collapsable) */
+    info: Object.freeze({
+        /** @type {HTMLInputElement} Readonly, shows the name of the GIF file *///@ts-ignore element does exist in DOM
+        fileName: document.getElementById("fileName"),
+        /** @type {HTMLInputElement} Button that opens the {@linkcode html.import.menu} (next to {@linkcode html.info.fileName}) *///@ts-ignore element does exist in DOM
+        open: document.getElementById("open"),
+        /** @type {HTMLInputElement} Readonly, shows the total width of the GIF (in pixels) *///@ts-ignore element does exist in DOM
+        totalWidth: document.getElementById("totalWidth"),
+        /** @type {HTMLInputElement} Readonly, shows the total height of the GIF (in pixels) *///@ts-ignore element does exist in DOM
+        totalHeight: document.getElementById("totalHeight"),
+        /** @type {HTMLInputElement} Readonly, shows the total number of frames of the GIF *///@ts-ignore element does exist in DOM
+        totalFrames: document.getElementById("totalFrames"),
+        /** @type {HTMLInputElement} Readonly, shows the total time of the GIF (in milliseconds) *///@ts-ignore element does exist in DOM
+        totalTime: document.getElementById("totalTime"),
+        /** @type {HTMLInputElement} Readonly, shows the pixel ascpect ratio of the GIF (in format `w:h` ie. `1:1`) *///@ts-ignore element does exist in DOM
+        pixelAspectRatio: document.getElementById("pixelAspectRatio"),
+        /** @type {HTMLInputElement} Readonly, shows the color resolution of the GIF (in bits) *///@ts-ignore element does exist in DOM
+        colorRes: document.getElementById("colorRes"),
+        /** @type {HTMLDivElement} List of colors in the global color table of the GIF (`<label title="Color index I">[I] <input type="color" disabled></label>` (optionaly with class `background-flag` / `transparent-flag` and addition to title) for each color or `<span>Empty list (see local color tables)</span>`) *///@ts-ignore element does exist in DOM
+        globalColorTable: document.getElementById("globalColorTable"),
+        /** @type {HTMLDivElement} List of comments in the GIF file (`<label title="Comment on frame I">[I] <textarea readonly>COMMENT</textarea></label>` for each frame/comment or `<span>Empty list</span>`) *///@ts-ignore element does exist in DOM
+        commentsList: document.getElementById("commentsList")
+    }),
+    /** GIF frame info panel (collapsable) */
+    frame: Object.freeze({
+        /** @type {HTMLDivElement} Collapsable (frame) view box container *///@ts-ignore element does exist in DOM
+        view: document.getElementById("frameView"),
+        /** @type {HTMLInputElement} Button to scale {@linkcode html.frame.view} to browser width (over info panel and controls) via class `full` *///@ts-ignore element does exist in DOM
+        fullWindow: document.getElementById("frameFullWindow"),
+        /** @type {HTMLInputElement} Button to toggle {@linkcode html.frame.htmlCanvas} between fit to {@linkcode html.frame.view} (default) and actual size (pan with drag controls if frame is larger than container) via class `real` *///@ts-ignore element does exist in DOM
+        fitWindow: document.getElementById("frameFitWindow"),
+        /** @type {HTMLInputElement} Button to cycle {@linkcode html.frame.canvas} image smoothing (OFF → low (default) → medium → high) *///@ts-ignore element does exist in DOM
+        imgSmoothing: document.getElementById("frameImgSmoothing"),
+        /** @type {HTMLCanvasElement} The frame canvas (HTML) for the current frame *///@ts-ignore element does exist in DOM
+        htmlCanvas: document.getElementById("htmlFrameCanvas"),
+        /** @type {CanvasRenderingContext2D} The frame canvas (2D context of {@linkcode html.frame.htmlCanvas}) for the current frame *///@ts-ignore element does exist in DOM
+        canvas: document.getElementById("htmlFrameCanvas").getContext("2d",{colorSpace:"srgb"}),
+        /** @type {HTMLInputElement} Readonly, shows the width of the current frame (in pixels) *///@ts-ignore element does exist in DOM
+        width: document.getElementById("frameWidth"),
+        /** @type {HTMLInputElement} Readonly, shows the height of the current frame (in pixels) *///@ts-ignore element does exist in DOM
+        height: document.getElementById("frameHeight"),
+        /** @type {HTMLInputElement} Readonly, shows the position of the current frame from the left edge of the GIF (in pixels) *///@ts-ignore element does exist in DOM
+        left: document.getElementById("frameLeft"),
+        /** @type {HTMLInputElement} Readonly, shows the position of the current frame from the top edge of the GIF (in pixels) *///@ts-ignore element does exist in DOM
+        top: document.getElementById("frameTop"),
+        /** @type {HTMLInputElement} Readonly, shows the disposal method of the current frame (index, text, and meaning) *///@ts-ignore element does exist in DOM
+        disposalMethod: document.getElementById("frameDisposalMethod"),
+        /** @type {HTMLInputElement} Readonly, shows the time in milliseconds this frame is displayed for *///@ts-ignore element does exist in DOM
+        time: document.getElementById("frameTime"),
+        /** @type {HTMLInputElement} Readonly, shows the estimated FPS of the GIF if every frame had this {@linkcode html.frame.time} *///@ts-ignore element does exist in DOM
+        fps: document.getElementById("frameFPS"),
+        /** @type {HTMLInputElement} Disabled checkbox to show if this frame is waiting for user input *///@ts-ignore element does exist in DOM
+        userInputFlag: document.getElementById("frameUserInputFlag"),
+        /** @type {HTMLDivElement} List of colors in the local color table of the current frame (`<label title="Color index I">[I] <input type="color" disabled></label>` (optionaly with class `background-flag` / `transparent-flag` and addition to title) for each color or `<span>Empty list (see global color table)</span>`) *///@ts-ignore element does exist in DOM
+        localColorTable: document.getElementById("frameColorTable"),
+        /**
+         * Text information for this frame
+         * - characters other than `0x20` to `0xF7` are interpreted as `0x20`
+         * - each character is rendered seperatly (in one cell each)
+         * - monospace font, size to cell height / width (measure font character w/h aspect and fit it to width if it's smaller)
+         * - cells are tiled from tp left, to right, then bottom (fractional cells are skiped)
+         * - if grid is filled and there are characters left, ignore them
+         */
+        text: Object.freeze({
+            /** @type {HTMLInputElement} Readonly, the text to display on top of the current frame *///@ts-ignore element does exist in DOM
+            text: document.getElementById("frameText"),
+            /** Grid information of this text */
+            grid: Object.freeze({
+                /** @type {HTMLInputElement} Readonly, the width of the text grid in pixels *///@ts-ignore element does exist in DOM
+                width: document.getElementById("frameTextWidth"),
+                /** @type {HTMLInputElement} Readonly, the height of the text grid in pixels *///@ts-ignore element does exist in DOM
+                height: document.getElementById("frameTextHeight"),
+                /** @type {HTMLInputElement} Readonly, the (top left) position of the text grid from the left edge of the GIF (logical screen) *///@ts-ignore element does exist in DOM
+                left: document.getElementById("frameTextLeft"),
+                /** @type {HTMLInputElement} Readonly, the (top left) position of the text grid from the top edge of the GIF (logical screen) *///@ts-ignore element does exist in DOM
+                top: document.getElementById("frameTextTop")
+            }),
+            /** Cell information of this text */
+            cell: Object.freeze({
+                /** @type {HTMLInputElement} The width of each character cell (should tile the text grid perfectly) *///@ts-ignore element does exist in DOM
+                width: document.getElementById("frameTextCharWidth"),
+                /** @type {HTMLInputElement} The height of each character cell (should tile the text grid perfectly) *///@ts-ignore element does exist in DOM
+                height: document.getElementById("frameTextCharHeight"),
+            }),
+            /** @type {HTMLInputElement} The foreground color of this text (index into global color table) *///@ts-ignore element does exist in DOM
+            foreground: document.getElementById("frameTextCharForeground"),
+            /** @type {HTMLInputElement} The background color of this text (index into global color table) *///@ts-ignore element does exist in DOM
+            background: document.getElementById("frameTextCharBackground")
+        })
+    }),
+    /** @type {HTMLDivElement} List of GIF application extensions in RAW binary (`<fieldset><legend><span>APPLICAT</span> <span>1.0</span></legend><span title="Description">unknown extension</span> <input type="button" title="Click to copy raw binary to clipboard" value="Copy raw binary"></fieldset>` for each app. ext. or `<span>Empty list</span>`) *///@ts-ignore element does exist in DOM
+    appExtList: document.getElementById("appExtList"),
+    /** Import menu */
+    import: Object.freeze({
+        /** @type {HTMLDialogElement} The import menu element (use this to open or close dialog box) *///@ts-ignore element does exist in DOM
+        menu: document.getElementById("importMenu"),
+        /** @type {HTMLInputElement} The URL input field (deactivate this if {@linkcode html.import.file} is used) *///@ts-ignore element does exist in DOM
+        url: document.getElementById("importURL"),
+        /** @type {HTMLInputElement} The file input field (deactivate this if {@linkcode html.import.url} is used) *///@ts-ignore element does exist in DOM
+        file: document.getElementById("importFile"),
+        /** @type {HTMLImageElement} The IMG preview of the imported GIF *///@ts-ignore element does exist in DOM
+        preview: document.getElementById("importPreview"),
+        /** @type {HTMLParagraphElement} Show warnings, errors, or other notes here *///@ts-ignore element does exist in DOM
+        warn: document.getElementById("importWarn"),
+        /** @type {HTMLInputElement} Button to confirm import, close {@linkcode html.import.menu}, and start decoding *///@ts-ignore element does exist in DOM
+        confirm: document.getElementById("importConfirm"),
+        /** @type {HTMLInputElement} Button to abort import and close {@linkcode html.import.menu} *///@ts-ignore element does exist in DOM
+        abort: document.getElementById("importAbort")
+    }),
+    /** Confirm menu */
+    confirm: Object.freeze({
+        /** @type {HTMLDialogElement} The confirm menu element (use this to open or close dialog box) *///@ts-ignore element does exist in DOM
+        menu: document.getElementById("confirmMenu"),
+        /** @type {HTMLSpanElement} The text to confirm in the {@linkcode confirmMenu} *///@ts-ignore element does exist in DOM
+        text: document.getElementById("confirmText"),
+        /** @type {HTMLInputElement} Button to confirm action and close {@linkcode confirmMenu} *///@ts-ignore element does exist in DOM
+        confirm: document.getElementById("confirmConfirm"),
+        /** @type {HTMLInputElement} Button to abort action and close {@linkcode confirmMenu} *///@ts-ignore element does exist in DOM
+        abort: document.getElementById("confirmAbort")
+    })
+});
+
+//~  _____              __ _                 ______ _       _
+//~ /  __ \            / _(_)                |  _  (_)     | |
+//~ | /  \/ ___  _ __ | |_ _ _ __ _ __ ___   | | | |_  __ _| | ___   __ _
+//~ | |    / _ \| '_ \|  _| | '__| '_ ` _ \  | | | | |/ _` | |/ _ \ / _` |
+//~ | \__/\ (_) | | | | | | | |  | | | | | | | |/ /| | (_| | | (_) | (_| |
+//~  \____/\___/|_| |_|_| |_|_|  |_| |_| |_| |___/ |_|\__,_|_|\___/ \__, |
+//~                                                                  __/ |
+//~                                                                 |___/
+
+const confirmDialog=Object.seal(new class ConfirmDialog{
+    /** @type {((aborted:boolean)=>Promise<void>|void)|null} [Private] Current callback when dialog is closed (can be async) */
+    static _callback_=null;
+    /** @type {HTMLDialogElement} [Private] The dialog HTML element to open/close */
+    static _dialog_;
+    /** @type {HTMLSpanElement} [Private] The text HMTL element of {@linkcode _dialog_} to show a confirm message */
+    static _title_;
+    /** @type {HTMLInputElement} [Private] The confirm button HMTL element of {@linkcode _dialog_} */
+    static _confirm_;
+    /** @type {HTMLInputElement} [Private] The abort button HMTL element of {@linkcode _dialog_} */
+    static _abort_;
+    /** @type {boolean} [Private] If a dialog is currently still pending (can't open another one) */
+    static _running_=false;
+    /** @type {boolean} If a dialog is currently still pending (can't open another one) */
+    get Running(){return ConfirmDialog._running_;}
+    /**
+     * ## Initializes {@linkcode ConfirmDialog} object
+     * @param {HTMLDialogElement} dialog - the confirm HMTL dialog element
+     * @param {HTMLSpanElement} text - the HTML text element of {@linkcode dialog} to show a confirm message
+     * @param {HTMLInputElement} confirm - the confirm button of {@linkcode dialog}
+     * @param {HTMLInputElement} abort - the abort button of {@linkcode dialog}
+     */
+    constructor(dialog,text,confirm,abort){
+        ConfirmDialog._title_=text;
+        ConfirmDialog._dialog_=dialog;
+        ConfirmDialog._confirm_=confirm;
+        ConfirmDialog._abort_=abort;
+        ConfirmDialog._dialog_.addEventListener("cancel",async ev=>{"use strict";ev.preventDefault();ConfirmDialog._abort_.click();},{passive:false});
+        ConfirmDialog._confirm_.addEventListener("click",async()=>ConfirmDialog._exit_(false),{passive:true});
+        ConfirmDialog._abort_.addEventListener("click",async()=>ConfirmDialog._exit_(true),{passive:true});
+    }
+    /**
+     * ## [Private, async] Called by an event listener when the dialog was closed
+     * @param {boolean} aborted - if the dialog was aborted (`true`) or confirmed (`false`)
+     */
+    static async _exit_(aborted){
+        "use strict";
+        ConfirmDialog._dialog_.close();
+        const call=ConfirmDialog._callback_;
+        ConfirmDialog._callback_=null;
+        ConfirmDialog._running_=false;
+        await call?.(aborted);
+    };
+    /**
+     * ## Shows a dialog that displays the {@linkcode action} to confirm
+     * check if another dialog is still pending via {@linkcode Running}
+     * @param {string} action - the action to confirm
+     * @param {(aborted:boolean)=>Promise<void>|void} callback - a (strict, passive, optionally async) function, called when the {@linkcode action} was confirmed (param `false`) or aborted (param `true`)
+     * @throws {Error} if another dialog is still pending
+     */
+    Setup(action,callback){
+        if(ConfirmDialog._running_)throw new Error("[ConfirmDialog:setup] another dialog is still pending");
+        ConfirmDialog._title_.textContent=action;
+        ConfirmDialog._callback_=callback;
+        ConfirmDialog._dialog_.showModal();
+    }
+    /**
+     * ## Removes event listeners from `dialog`, `confirm`, and `abort` HTML elements (only call before deleting object)
+     * check if a dialog is still pending via {@linkcode Running}
+     * @param {boolean} [force] - [Optional] if `true` forces a pending dialog to abort
+     * @throws {TypeError} if {@linkcode force} is set, but not a boolean
+     * @throws {Error} if a dialog is still pending
+     */
+    static async RemoveListeners(force){
+        if(force!=null&&typeof force!=="boolean")throw new TypeError("[ConfirmDialog:RemoveListeners] force is not a boolean");
+        if(force==null||!force){
+            if(ConfirmDialog._running_)throw new Error("[ConfirmDialog:setup] a dialog is still pending");
+        }else await ConfirmDialog._exit_(true);
+        ConfirmDialog._dialog_.removeEventListener("cancel",async ev=>{"use strict";ev.preventDefault();ConfirmDialog._abort_.click();});
+        ConfirmDialog._confirm_.removeEventListener("click",async()=>ConfirmDialog._exit_(false));
+        ConfirmDialog._abort_.removeEventListener("click",async()=>ConfirmDialog._exit_(true));
+    }
+}(html.confirm.menu,html.confirm.text,html.confirm.confirm,html.confirm.abort));
+
 //~  _   _______ _        ___                                       _
 //~ | | | | ___ \ |      / _ \                                     | |
 //~ | | | | |_/ / |     / /_\ \_ __ __ _ _   _ _ __ ___   ___ _ __ | |_ ___
@@ -513,20 +785,83 @@ const getGIFLoopAmount=gif=>{
 //~                                 __/ |
 //~                                |___/
 
-let _forceClearLastFrame_=true,
-    _alertErrors_=true,
-    _gifURL_="https://upload.wikimedia.org/wikipedia/commons/a/a2/Wax_fire.gif";
-const args=window.location.search;
-if(args.length>1)
-    for(const arg of args.substring(1).split('&'))
-        switch(true){
-            case/^forceClearLastFrame=[01]$/.test(arg):_forceClearLastFrame_=arg.substring(0x14)==='1';break;
-            case/^alertErrors=[01]$/.test(arg):_alertErrors_=arg.substring(0xC)==='1';break;
-            case/^gifURL=.+$/.test(arg):_gifURL_=decodeURIComponent(arg.substring(7));break;
-        }
-const forceClearLastFrame=_forceClearLastFrame_,
-    alertErrors=_alertErrors_,
-    gifURL=_gifURL_;
+// TODO see notes in index.html
+(()=>{
+    "use strict";
+    const args=new URLSearchParams(window.location.search);
+    let _tmpVal_=null;
+    ((_tmpVal_=args.get("gifURL"))==null?undefined:(_tmpVal_.length>0?decodeURIComponent(_tmpVal_):undefined))??"https://upload.wikimedia.org/wikipedia/commons/a/a2/Wax_fire.gif";
+})();
+
+//~  _____      _                         ______                _   _
+//~ /  ___|    | |                 ___    |  ___|              | | (_)
+//~ \ `--.  ___| |_ _   _ _ __    ( _ )   | |_ _   _ _ __   ___| |_ _  ___  _ __  ___
+//~  `--. \/ _ \ __| | | | '_ \   / _ \/\ |  _| | | | '_ \ / __| __| |/ _ \| '_ \/ __|
+//~ /\__/ /  __/ |_| |_| | |_) | | (_>  < | | | |_| | | | | (__| |_| | (_) | | | \__ \
+//~ \____/ \___|\__|\__,_| .__/   \___/\/ \_|  \__,_|_| |_|\___|\__|_|\___/|_| |_|___/
+//~                      | |
+//~                      |_|
+
+html.view.canvas.imageSmoothingEnabled=true;
+html.view.canvas.imageSmoothingQuality="low";
+
+/** Cycles image smoothing quality of {@linkcode html.view.canvas} one step each call (OFF → low → medium → high) and changed `data-cycle` of {@linkcode html.view.imgSmoothing} (0 to 3) */
+const cycleGIFCanvasQuality=()=>{
+    "use strict";
+    if(!html.view.canvas.imageSmoothingEnabled){
+        html.view.imgSmoothing.dataset.cycle="1";
+        html.view.canvas.imageSmoothingEnabled=true;
+        html.view.canvas.imageSmoothingQuality="low";
+    }else switch(html.view.canvas.imageSmoothingQuality){
+        case "low":
+            html.view.imgSmoothing.dataset.cycle="2";
+            html.view.canvas.imageSmoothingQuality="medium";
+        break;
+        case "medium":
+            html.view.imgSmoothing.dataset.cycle="3";
+            html.view.canvas.imageSmoothingQuality="high";
+        break;
+        case "high":
+            html.view.imgSmoothing.dataset.cycle="0";
+            html.view.canvas.imageSmoothingEnabled=false;
+        break;
+    }
+};
+/** Cycles image smoothing quality of {@linkcode html.frame.canvas} one step each call (OFF → low → medium → high) and changed `data-cycle` of {@linkcode html.frame.imgSmoothing} (0 to 3) */
+const cycleFrameCanvasQuality=()=>{
+    "use strict";
+    if(!html.frame.canvas.imageSmoothingEnabled){
+        html.frame.imgSmoothing.dataset.cycle="1";
+        html.frame.canvas.imageSmoothingEnabled=true;
+        html.frame.canvas.imageSmoothingQuality="low";
+    }else switch(html.frame.canvas.imageSmoothingQuality){
+        case "low":
+            html.frame.imgSmoothing.dataset.cycle="2";
+            html.frame.canvas.imageSmoothingQuality="medium";
+        break;
+        case "medium":
+            html.frame.imgSmoothing.dataset.cycle="3";
+            html.frame.canvas.imageSmoothingQuality="high";
+        break;
+        case "high":
+            html.frame.imgSmoothing.dataset.cycle="0";
+            html.frame.canvas.imageSmoothingEnabled=false;
+        break;
+    }
+};
+
+// TODO utility functions
+
+const loadGifURL=url=>{};
+const loadGifFile=file=>{};
+
+const genHTMLColorGrid=(colorTable)=>{};
+const genHTMLCommentList=(gif)=>{};
+const genHTMLAppExtList=(gif)=>{};
+
+const updateGifInfo=gif=>{};
+const updateFrameInfo=(gif,i)=>{};
+const updateSliderValues=(gif,i,t)=>{};
 
 //~  _____ ___________                      _
 //~ |  __ \_   _|  ___|                    | |
@@ -534,6 +869,13 @@ const forceClearLastFrame=_forceClearLastFrame_,
 //~ | | __  | | |  _|   | '__/ _ \ '_ \ / _` |/ _ \ '__|
 //~ | |_\ \_| |_| |     | | |  __/ | | | (_| |  __/ |
 //~  \____/\___/\_|     |_|  \___|_| |_|\__,_|\___|_|
+
+// TODO use animation frames and calculate timing for gif frames
+// TODO edge-case: abort update-loop if previous and current animation frame timestamp is the same value
+// TODO ~ log animation frame time ? calculate frame ~ loop or last frame
+// TODO use async functions for rendering ~ immediatly call next animation frame while doing work async ~
+
+// TODO ↓
 
 /*
     const img=new ImageData(Uint8ClampedArray.of(1,0x7F,0xFF,0xFF),1,1,{colorSpace:"srgb"});
@@ -580,6 +922,10 @@ const _fNum_=num=>{
     for(let i=offset===0?3:offset;i<n.length;i+=4)n=`${n.substring(0,i)}'${n.substring(i)}`;
     return n;
 };
+
+const forceClearLastFrame=true,
+    alertErrors=true,
+    gifURL="https://upload.wikimedia.org/wikipedia/commons/a/a2/Wax_fire.gif";
 
 decodeGIF(gifURL,async(percentageRead,frameCount,frameUpdate,framePos,gifSize)=>{
     progressBar.value=percentageRead;

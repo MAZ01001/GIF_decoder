@@ -6,8 +6,184 @@
     <meta name="description" content="[MAZ01001.github.io] GIF decoding and rendering with HTML5 canvas">
     <meta name="author" content="MAZ01001">
     <title>GIF decoder</title>
+    <link rel="stylesheet" href="style.css">
 </head>
 <body>
-    <script src="./script.js"></script>
+    <noscript>This page needs JavaScript to work</noscript>
+    <div id="box">
+        <h1>GIF decoder</h1>
+        <!-- TODO
+            import menu ~ when URL or file is inputed (onChange) disable the other ~ if GIF loads successfully enable Start-button
+            ! warning BEFORE decoding GIFs over ~ 10MiB (also check MIME type when loading)
+            ! loading screen ~ with progressbar
+            timeTickmarks indicate frame timestamps ~ ignore for user-input-flags
+            the htmlFrameCanvas should only be rendered to if it's visible
+            color tables are grids
+            style disabled/readonly fields normal ~ exceptions should use css "cursor: not-allowed;"
+            when userInputLock is ON then the normal userInptu button is disabled
+            when user input is expected and lock is OFF highlight userInputField (border color lime-green ~)
+            auto hide gifView buttons after 1sec no mouse movement (js mouse move) or mouse leaves div (css hover)
+            URL parameters: gifURL (string) | fullWindow (0/1) | fitWindow (0/1) | imgSmoothing (0/1) | frameIndex (int) | status (string/int: pause-0/play-1/reverse-2)
+            > also frame canvas ~ fit window only one (gif > frame)
+            realtime canvas updates when changing frameRange ?! or limit to animation frames ~ 60fps
+            fieldsets resizeable ? (color tables / comments)
+            fullWindow and frameFullWindow scale the canvas to browser window size (and add title "click anywhere to show details" to canvas) and when clicked anywhere (on the canvas) revert this (gif can still be controlled via hotkeys ~)
+            ? flags for rendering ~ disable background-frame (background-color transparent?) ~ choose transparent color (index?)
+            ? show data of reserved fields
+            ? fps view (based on animation frames not GIF playback fps)
+            ! fps (each frame, estimate fps if every frame has this delay ~ next to frame time)
+            ! add title="" to every element
+            ? don't update frame information during playback ? ~ to fast ? performance / lag ? test !
+            ~ zoom controls
+            ~ speed controls
+            ! loop controls ~ default off unless the netscape extension says loop ?
+            ~ useless stats
+            ! remove non-default classes (from testing)
+            ? context menu for input-color fields ~ shows RGB values & hex code ~ instead of writing color code after input-color
+        -->
+        <div id="gifView" class="full">
+            <input type="button" id="fullWindow" title="Scale canvas to browser size (hides info panel and controls)">
+            <input type="button" id="fitWindow" data-toggle="1" title="Toggle between fit to window and actual size">
+            <input type="button" id="imgSmoothing" data-cycle="1" title="Cycle image smoothing options (OFF → low → medium → high)">
+            <canvas id="htmlCanvas" class="real" title="GIF render canvas">Your browser does not support the HTML canvas element</canvas>
+        </div>
+        <label for="timeRange" title="Current timestamp">Time: <input type="range" id="timeRange" disabled min="0" value="0" list="timeTickmarks"> <span id="time">0</span> ms</label>
+        <datalist id="timeTickmarks"></datalist>
+        <label for="frameRange" title="Current frame index">Frame: <input type="range" id="frameRange" step="1" min="0" max="10" value="1"> <span id="frame">0</span></label>
+        <div id="playerControls">
+            <input type="button" id="seekStart" value="⏮" title="first frame (paused)" disabled>
+            <input type="button" id="seekPrevious" value="&LeftArrowBar;" title="previous frame (paused)" disabled>
+            <input type="button" id="reverse" value="⏴" title="reverse play" disabled>
+            <input type="button" id="pause" value="⏸" title="pause" disabled>
+            <input type="button" id="play" value="⏵" title="play" disabled>
+            <input type="button" id="seekNext" value="&RightArrowBar;" title="next frame (paused)" disabled>
+            <input type="button" id="seekEnd" value="⏭" title="last frame (paused)" disabled>
+        </div>
+        <fieldset id="userInputField"><legend title="If highlighted blue needs user input to continue playback">User input</legend>
+            <label for="userInputTimeout">Timeout: <input type="range" id="userInputTimeout" disabled min="0" value="0" class="none infinity"> <span id="userInputTimeoutTime">0</span> ms</label>
+            <input type="button" id="userInput" title="Click to continue playing GIF" value="Continue">
+            <input type="button" id="userInputLock" data-toggle="0" title="Click to toggle instant user input" value="Lock">
+        </fieldset>
+        <div id="infoPanels">
+            <input type="button" id="open" value="Open GIF" title="Click to open the import menu">
+            <fieldset><legend title="General information about the GIF">GIF info</legend>
+                <details open><summary>Click to toggle contents</summary>
+                    <div id="gifInfoArea">
+                        <table>
+                            <tr><th>Name</th><th>Value</th></tr>
+                            <tr title="The filename of the GIF currently loaded"><td>Filename</td><td id="fileName">Wax_fire.gif</td></tr>
+                            <tr title="The width*height of the entire GIF"><td>Size</td><td><span id="totalWidth">0</span> * <span id="totalHeight">0</span> px</td></tr>
+                            <tr title="The amount of frames in this GIF"><td>Total frames</td><td id="totalFrames">0</td></tr>
+                            <tr title="The total time of the entire GIF"><td>Total Time</td><td id="totalTime">0</span> ms</tr>
+                            <tr title="the Pixel aspect ratio of the GIF"><td>Pixel aspect ratio</td><td id="pixelAspectRatio">1:1</td></tr>
+                            <tr title="The color resolution of the GIF"><td>Color resolution</td><td id="colorRes">8</span> bit</tr>
+                        </table>
+                        <fieldset><legend title="The global color table of the GIF">Global color table</legend>
+                            <div id="globalColorTable">
+                                <!-- auto gen -->
+                                <label title="Color index 0 (background color)" class="background-flag">[0] <input type="color" disabled value="#000000"></label>
+                                <label title="Color index 1 (transparent color)" class="transparent-flag">[1] <input type="color" disabled value="#FF00FF"></label>
+                                <label title="Color index 2">[2] <input type="color" disabled value="#FF0000"></label>
+                                <label title="Color index 3">[3] <input type="color" disabled value="#00FF00"></label>
+                                <label title="Color index 4">[4] <input type="color" disabled value="#0000FF"></label>
+                            </div>
+                        </fieldset>
+                        <fieldset><legend title="Comments in the GIF file and the frame index of where they were found">Comments</legend>
+                            <div id="commentsList">
+                                <!-- auto gen -->
+                                <label title="Comment on frame 0">[0] <textarea readonly>TEST - 0</textarea></label>
+                                <label title="Comment on frame 1">[1] <textarea readonly>TEST - 1</textarea></label>
+                                <label title="Comment on frame 5">[5] <textarea readonly>TEST - 5</textarea></label>
+                                <label title="Comment on frame 6">[6] <textarea readonly>TEST - 6</textarea></label>
+                                <label title="Comment on frame 9">[9] <textarea readonly>TEST - 9</textarea></label>
+                            </div>
+                        </fieldset>
+                    </div>
+                </details>
+            </fieldset>
+            <fieldset><legend title="Information of the currently displayed frame">Frame info</legend>
+                <details open><summary>Click to toggle contents</summary>
+                    <div id="frameInfoArea">
+                        <details><summary>Click to view frame</summary>
+                            <div id="frameView" class="full">
+                                <input type="button" id="frameFullWindow" title="Scale canvas to browser size (hides info panel and controls)">
+                                <input type="button" id="frameFitWindow" data-toggle="1" title="Toggle between fit to window and actual size">
+                                <input type="button" id="frameImgSmoothing" data-cycle="1" title="Cycle image smoothing options (OFF → low → medium → high)">
+                                <canvas id="htmlFrameCanvas" class="real" title="Frame render canvas">Your browser does not support the HTML canvas element</canvas>
+                            </div>
+                        </details>
+                        <table>
+                            <tr><th>Name</th><th>Value</th></tr>
+                            <tr title="The width*height of the current frame"><td>Size</td><td><span id="frameWidth">0</span> * <span id="frameHeight">0</span> px</td></tr>
+                            <tr title="The position of the current frame from the left/top edge of the GIF"><td>Position</td><td><span id="frameLeft">0</span> / <span id="frameTop">0</span> px</td></tr>
+                            <tr title="The disposal method of the current frame"><td>Disposal method</td><td><span id="frameDisposalMethod">[0 unspecified]<br>Replaces current canvas content</span></td></tr>
+                            <tr title="How long this frame is displayed for"><td>Time</td><td><span id="frameTime">0</span> ms</td></tr>
+                            <tr title="Estimated Frames-Per-Second of the GIF if every frame had this time"><td>FPS</td><td><span id="frameFPS">0</span> frames/sec</td></tr>
+                            <tr title="If the user input flag is set for the current frame"><td>User input flag</td><td><input type="checkbox" id="frameUserInputFlag" disabled></td></tr>
+                        </table>
+                        <fieldset><legend>Local color table</legend>
+                            <div id="frameColorTable">
+                                <!-- auto gen -->
+                                <label title="Color index 0 (background color)" class="background-flag">[0] <input type="color" disabled value="#000000"></label>
+                                <label title="Color index 1 (transparent color)" class="transparent-flag">[1] <input type="color" disabled value="#FF00FF"></label>
+                                <label title="Color index 2">[2] <input type="color" disabled value="#FF0000"></label>
+                                <label title="Color index 3">[3] <input type="color" disabled value="#00FF00"></label>
+                                <label title="Color index 4">[4] <input type="color" disabled value="#0000FF"></label>
+                            </div>
+                        </fieldset>
+                        <fieldset><legend title="Text that is displayed during this frame">Text</legend>
+                            <details open><summary>Click to toggle contents</summary>
+                                <div id="frameTextArea">
+                                    <table>
+                                        <tr><th>Name</th><th>Value</th></tr>
+                                        <tr title="The text to display on the current frame"><td>String</td><td><span id="frameText">TEXT</span></td></tr>
+                                        <tr title="The width*height of the character grid"><td>Grid size</td><td><span id="frameTextWidth">0</span> * <span id="frameTextHeight">0</span> px</td></tr>
+                                        <tr title="The position of the character grid from the left/top edge of the GIF"><td>Grid position</td><td><span id="frameTextLeft">0</span> / <span id="frameTextTop">0</span> px</td></tr>
+                                        <tr title="The width*height for each cell in the character grid"><td>Character size</td><td><span id="frameTextCharWidth">0</span> * <span id="frameTextCharHeight">0</span> px</td></tr>
+                                        <tr title="The foreground color of the text"><td>Foreground</td><td><input type="color" id="frameTextCharForeground" disabled value="#FFFFFF"></td></tr>
+                                        <tr title="Teh background color of the text"><td>Background</td><td><input type="color" id="frameTextCharBackground" disabled value="#000000"></td></tr>
+                                    </table>
+                                </div>
+                            </details>
+                        </fieldset>
+                    </div>
+                </details>
+            </fieldset>
+            <fieldset><legend>Application extensions</legend>
+                <details open><summary>Click to toggle contents</summary>
+                    <div id="appExtList">
+                        <!-- auto gen -->
+                        <fieldset><legend><span>APPLICAT</span> <span>1.0</span></legend>
+                            <span title="Description">unknown extension</span>
+                            <input type="button" title="Click to copy raw binary to clipboard" value="Copy raw binary">
+                        </fieldset>
+                    </div>
+                </details>
+            </fieldset>
+        </div>
+    </div>
+    <dialog id="importMenu">
+        <h2>Import</h2>
+        <fieldset><legend title="Load a GIF from URL or a file">Load a GIF file</legend>
+            <input type="url" id="importURL" placeholder="https://example.com/test.gif">
+            <p>-- OR --</p>
+            <input type="file" id="importFile" accept=".gif">
+        </fieldset>
+        <fieldset><legend title="Preview of selected GIF">GIF preview</legend>
+            <img id="importPreview" src="" alt="GIF preview">
+        </fieldset>
+        <p id="importWarn">TEST warning! Please ignore.</p>
+        <input type="button" id="importConfirm" disabled value="Start" title="Start decoding GIF">
+        <input type="button" id="importAbort" autofocus value="Abort" title="Close import menu">
+    </dialog>
+    <dialog id="confirmMenu">
+        <h2>Are you sure?</h2>
+        <span id="confirmText">________</span>
+        <div>
+            <input type="button" id="confirmConfirm" value="OK" title="confirm action">
+            <input type="button" id="confirmAbort" value="Abort" title="abort action" autofocus>
+        </div>
+    </dialog>
+    <!-- TODO <script src="./script.js"></script> -->
 </body>
 </html>

@@ -13,11 +13,6 @@ body{
     font-family: 'Times New Roman', Times, serif;
     font-size: large;
 }
-*{
-    place-items: safe center;
-    place-content: safe center;
-    gap: .25rem;
-}
 ::selection{
     background-color: #F90;
     color: #000;
@@ -50,7 +45,10 @@ input[type=button]:not(:disabled),
 input[type=range]:not(:disabled),
 input[type=checkbox],
 details>summary{cursor: pointer;}
-details>summary{color: #0A0;}
+details>summary{
+    color: #0A0;
+    font-style: italic;
+}
 input:disabled,
 input:read-only,
 textarea:read-only{cursor: default;}
@@ -81,13 +79,20 @@ input[type=color]:disabled{
 }
 input[type=range][list]{color: inherit;}
 label{white-space: nowrap;}
-table tr:nth-child(3n-1){background-color: #0003;}
+table{border-collapse: collapse;}
+table tr:nth-child(even){background-color: #0003;}
+table th,
+table td{
+    text-align: start;
+    padding: .2rem .4rem;
+}
 input[type=range]{
     vertical-align: middle;
     width: 15rem;
     height: 1.375rem;
 }
 input[type=range]:disabled::-webkit-slider-thumb{display: none;}
+input[data-toggle="1"]{background-color: #222;}
 /*~ ______     _        _ _          _  */
 /*~ |  _  \   | |      (_) |        | | */
 /*~ | | | |___| |_ __ _ _| | ___  __| | */
@@ -105,6 +110,17 @@ div#frameColorTable,
 div#appExtList{
     display: flex;
     flex-direction: column;
+    gap: .25rem;
+    place-items: safe center;
+    place-content: safe center;
+}
+div#globalColorTable,
+div#commentsList,
+div#frameColorTable,
+div#appExtList{
+    max-height: 5rem;
+    overflow: auto;
+    scrollbar-gutter: stable both-edges;
 }
 div#box{
     position: absolute;
@@ -133,16 +149,74 @@ div#box>h1{
 }
 div#gifView{
     grid-area: 2/1/3/2;
+    width: 30rem;
+    height: 30rem;
+}
+div#frameView{
+    width: 25rem;
+    height: 25rem;
+}
+div#gifView,
+div#frameView{
     background-color: #000;
     padding: .5rem;
     border-radius: .5rem;
     box-sizing: border-box;
-    min-width: 25rem;
-    min-height: 20rem;
-    max-width: 50rem;
-    max-height: 45rem;
+    overflow: hidden;
+    user-select: none;
+    /*~ make this element a containing block for the absolute positioning of the view buttons below */
+    /*// transform: translateZ(0); */
+    position: relative;
 }
-/* TODO gif view buttons ~ floating/relative ~ top-right → down ! symbols, colors (data-toggle) */
+div#gifViewButtons,
+div#frameViewButtons{
+    z-index: 1;
+    position: absolute;
+    top: .5rem;
+    right: .5rem;
+    display: flex;
+    flex-direction: column;
+    gap: .25rem;
+}
+div#gifViewButtons>input,
+div#frameViewButtons>input{
+    box-sizing: content-box;
+    padding: 0;
+    width: 1.5rem;
+    height: 1.5rem;
+    font-family: 'consolas', 'Courier New', Courier, monospace;
+    font-size: 1rem;
+}
+canvas#htmlCanvas,
+canvas#htmlFrameCanvas{
+    object-fit: contain;
+    width: calc(100% - .5rem);
+    height: calc(100% - .5rem);
+    margin: auto;
+    transform: translate(-50%, -50%);
+    position: absolute;
+    top: 50%;
+    left: 50%;
+    image-rendering: auto;
+}
+canvas#htmlCanvas.pixel,
+canvas#htmlFrameCanvas.pixel{image-rendering: pixelated;}
+canvas#htmlCanvas.real,
+canvas#htmlFrameCanvas.real{
+    object-fit: none;
+    width: initial;
+    height: initial;
+    cursor: grab;
+    /*~ sets the position (updated via JS) */
+    margin-left: 0px;
+    margin-top: 0px;
+    /*~ updated in JS when zooming in/out */
+    --canvas-width: 0px;
+    --scaler: 1.0;
+    width: calc(var(--canvas-width) * var(--scaler));
+}
+canvas#htmlCanvas.real:active,
+canvas#htmlFrameCanvas.real:active{cursor: grabbing;}
 label[for=timeRange]{grid-area: 3/1/4/2;}
 label[for=frameRange]{grid-area: 4/1/5/2;}
 input#frameRange{width: 19rem;}
@@ -173,6 +247,9 @@ div#playerControls>input#seekNext{font-size: 1.53rem;}
 fieldset#userInputField{
     grid-area: 6/1/7/2;
     display: grid;
+    gap: .25rem;
+    place-items: safe center;
+    place-content: safe center;
     justify-items: stretch;
 }
 fieldset#userInputField.waiting{border: 4px groove #00F;}
@@ -189,16 +266,19 @@ div#infoPanels{
     border-radius: .5rem;
     padding: .5rem;
     gap: .5rem;
-    min-width: 20rem;
-    /* TODO - stretch contents */
+    width: 28rem;
+    height: 42.8rem;
+    overflow: auto;
+    scrollbar-gutter: stable both-edges;
 }
+div#infoPanels>fieldset{min-width: 90%;}
 div#gifInfoArea,
 div#frameInfoArea,
 div#frameTextArea{
     display: grid;
+    gap: .5rem;
     place-items: safe stretch;
     place-content: safe center;
-    gap: .5rem;
 }
 div#globalColorTable>span,
 div#frameColorTable>span,
@@ -209,6 +289,7 @@ div#appExtList>span{
     font-style: italic;
     color: #0A0;
 }
+label>textarea{vertical-align: middle;}
 /*~  _____                _ _ _                 */
 /*~ /  ___|              | | | |                */
 /*~ \ `--.  ___ _ __ ___ | | | |__   __ _ _ __  */

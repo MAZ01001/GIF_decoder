@@ -802,8 +802,8 @@ const confirmDialog=Object.seal(new class ConfirmDialog{
 //~                      | |
 //~                      |_|
 
-html.view.canvas.imageSmoothingEnabled=true;
-html.view.canvas.imageSmoothingQuality="low";
+html.view.canvas.imageSmoothingEnabled=false;
+html.frame.canvas.imageSmoothingEnabled=false;
 
 /** Cycles image smoothing quality of {@linkcode html.view.canvas} one step each call (OFF → low → medium → high) and changed `data-cycle` of {@linkcode html.view.imgSmoothing} (0 to 3) */
 const cycleGIFCanvasQuality=()=>{

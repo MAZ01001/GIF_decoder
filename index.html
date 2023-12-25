@@ -31,33 +31,47 @@
             ? flags for rendering ~ disable background-frame (background-color transparent?) ~ choose transparent color (index?)
             ? show data of reserved fields
             ? fps view (based on animation frames not GIF playback fps)
-            ! fps (each frame, estimate fps if every frame has this delay ~ next to frame time)
+            ! fps of the canvas update rate (animation frame rate)
             ! add title="" to every element
             ? don't update frame information during playback ? ~ to fast ? performance / lag ? test !
             ~ zoom controls
             ~ speed controls
             ! loop controls ~ default off unless the netscape extension says loop ?
             ~ useless stats
-            ! remove non-default classes (from testing)
+            ! remove non-default classes and closed/non-standard opens (testing)
             ? context menu for input-color fields ~ shows RGB values & hex code ~ instead of writing color code after input-color
+            zoom and pan for gif and frame canvas view syncronized ?
+            > pan update canvas margin top/left via JS from 0/0 px (centered) up to {
+                  left edge at 50% canvas width     margin-left
+                 right edge at 50% canvas width *-1 margin-left
+                   top edge at 50% canvas width     margin-top
+                bottom edge at 50% canvas width *-1 margin-top
+            } (when left mouse button is down and mouse moves ! change my amount mouse moves not mose position)
+            > zoom update canvas --canvas-width ("<width-attr>px") and --scaler ("1.0") css variables
+            ! update css var --canvas-width ("<width-attr>px") when adding class "real" to canvas
+            ! change unicode symbol when toggling canvas size ~ 0🞕 1🞑
+            ! change unicode symbol when toggling canvas filter ~ 0🙾 1🙼 (and class "pixel")
+            ~ add comment: canvas context2d imageSmoothingEnabled (true) and imageSmoothingQuality (low medium high) are only for drawn images that are distorted or scaled, but since here the GIF is rendered at native resolution (within the canvas) the only smooth/sharp that is possible is via CSS image-rendering
         -->
         <div id="gifView" class="full">
-            <input type="button" id="fullWindow" title="Scale canvas to browser size (hides info panel and controls)">
-            <input type="button" id="fitWindow" data-toggle="1" title="Toggle between fit to window and actual size">
-            <input type="button" id="imgSmoothing" data-cycle="1" title="Cycle image smoothing options (OFF → low → medium → high)">
-            <canvas id="htmlCanvas" class="real" title="GIF render canvas">Your browser does not support the HTML canvas element</canvas>
+            <div id="gifViewButtons">
+                <input type="button" id="fullWindow" title="Scale canvas to browser size (hides info panel and controls)" value="⤢">
+                <input type="button" id="fitWindow" data-toggle="0" title="Toggle between fit to window (🞕) and actual size (🞑)" value="🞕">
+                <input type="button" id="imgSmoothing" data-toggle="1" title="Toggle between pixelated (🙾) and smooth (🙼) image rendering" value="🙼">
+            </div>
+            <canvas id="htmlCanvas" width="920" height="720" title="GIF render canvas">Your browser does not support the HTML canvas element</canvas>
         </div>
         <label for="timeRange" title="Current timestamp">Time: <input type="range" id="timeRange" disabled min="0" value="0" list="timeTickmarks"> <span id="time">0</span> ms</label>
         <datalist id="timeTickmarks"></datalist>
         <label for="frameRange" title="Current frame index">Frame: <input type="range" id="frameRange" step="1" min="0" max="10" value="1"> <span id="frame">0</span></label>
         <div id="playerControls">
-            <input type="button" id="seekStart" value="⏮" title="first frame (paused)" disabled>
-            <input type="button" id="seekPrevious" value="&LeftArrowBar;" title="previous frame (paused)" disabled>
-            <input type="button" id="reverse" value="⏴" title="reverse play" disabled>
-            <input type="button" id="pause" value="⏸" title="pause" disabled>
-            <input type="button" id="play" value="⏵" title="play" disabled>
-            <input type="button" id="seekNext" value="&RightArrowBar;" title="next frame (paused)" disabled>
-            <input type="button" id="seekEnd" value="⏭" title="last frame (paused)" disabled>
+            <input type="button" id="seekStart" value="⏮" title="first frame (paused)">
+            <input type="button" id="seekPrevious" value="&LeftArrowBar;" title="previous frame (paused)">
+            <input type="button" id="reverse" value="⏴" title="reverse play">
+            <input type="button" id="pause" value="⏸" title="pause">
+            <input type="button" id="play" value="⏵" title="play">
+            <input type="button" id="seekNext" value="&RightArrowBar;" title="next frame (paused)">
+            <input type="button" id="seekEnd" value="⏭" title="last frame (paused)">
         </div>
         <fieldset id="userInputField"><legend title="If highlighted blue needs user input to continue playback">User input</legend>
             <label for="userInputTimeout">Timeout: <input type="range" id="userInputTimeout" disabled min="0" value="0" class="none infinity"> <span id="userInputTimeoutTime">0</span> ms</label>
@@ -102,16 +116,18 @@
                 </details>
             </fieldset>
             <fieldset><legend title="Information of the currently displayed frame">Frame info</legend>
-                <details open><summary>Click to toggle contents</summary>
+                <details><summary>Click to view frame</summary>
+                    <div id="frameView" class="full">
+                        <div id="frameViewButtons">
+                            <input type="button" id="frameFullWindow" title="Scale canvas to browser size (hides info panel and controls)" value="⤢">
+                            <input type="button" id="frameFitWindow" data-toggle="0" title="Toggle between fit to window (🞕) and actual size (🞑)" value="🞕">
+                            <input type="button" id="frameImgSmoothing" data-toggle="1" title="Toggle between pixelated (🙾) and smooth (🙼) image rendering" value="🙼">
+                        </div>
+                        <canvas id="htmlFrameCanvas" width="100" height="100" title="Frame render canvas">Your browser does not support the HTML canvas element</canvas>
+                    </div>
+                </details>
+                <details><summary>Click to toggle contents</summary>
                     <div id="frameInfoArea">
-                        <details><summary>Click to view frame</summary>
-                            <div id="frameView" class="full">
-                                <input type="button" id="frameFullWindow" title="Scale canvas to browser size (hides info panel and controls)">
-                                <input type="button" id="frameFitWindow" data-toggle="1" title="Toggle between fit to window and actual size">
-                                <input type="button" id="frameImgSmoothing" data-cycle="1" title="Cycle image smoothing options (OFF → low → medium → high)">
-                                <canvas id="htmlFrameCanvas" class="real" title="Frame render canvas">Your browser does not support the HTML canvas element</canvas>
-                            </div>
-                        </details>
                         <table>
                             <tr><th>Name</th><th>Value</th></tr>
                             <tr title="The width*height of the current frame"><td>Size</td><td><span id="frameWidth">0</span> * <span id="frameHeight">0</span> px</td></tr>
@@ -150,12 +166,13 @@
                 </details>
             </fieldset>
             <fieldset><legend>Application extensions</legend>
-                <details open><summary>Click to toggle contents</summary>
+                <details><summary>Click to toggle contents</summary>
                     <div id="appExtList">
                         <!-- auto gen -->
                         <fieldset><legend><span>APPLICAT</span> <span>1.0</span></legend>
                             <span title="Description">unknown extension</span>
                             <input type="button" title="Click to copy raw binary to clipboard" value="Copy raw binary">
+                            <!-- TODO ? raw bytes as hex string ~ instead of copy button -->
                         </fieldset>
                     </div>
                 </details>
@@ -184,6 +201,35 @@
             <input type="button" id="confirmAbort" value="Abort" title="abort action" autofocus>
         </div>
     </dialog>
+    <script>
+        // TODO remove test image
+        [htmlCanvas,htmlFrameCanvas].forEach(cnv=>{
+            /**@type {CanvasRenderingContext2D}*/
+            const cnx=cnv.getContext("2d");
+            cnx.imageSmoothingEnabled=false;
+        });
+        const fn=()=>{
+            "use strict";
+            for(const cnv of [htmlCanvas,htmlFrameCanvas]){
+                /**@type {CanvasRenderingContext2D}*/
+                const cnx=cnv.getContext("2d");
+                cnx.fillStyle="red";
+                cnx.fillRect(0,0,cnv.width,cnv.height);
+                cnx.fillStyle="blue";
+                cnx.fillRect(cnv.width*.5-25,cnv.height*.5-25,50,50);
+                cnx.strokeStyle="black";
+                cnx.beginPath();
+                cnx.moveTo(0,0);
+                cnx.lineTo(cnv.width,cnv.height);
+                cnx.moveTo(0,cnv.height);
+                cnx.lineTo(cnv.width,0);
+                cnx.stroke();
+                cnx.closePath();
+            }
+            requestAnimationFrame(fn);
+        };
+        fn();
+    </script>
     <!-- TODO <script src="./script.js"></script> -->
 </body>
 </html>

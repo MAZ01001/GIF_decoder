@@ -11,55 +11,48 @@
 <body>
     <noscript>This page needs JavaScript to work</noscript>
     <div id="box">
-        <h1>GIF decoder</h1>
+        <h1 id="gifHeading">GIF decoder</h1>
         <!-- TODO
-            import menu ~ when URL or file is inputed (onChange) disable the other ~ if GIF loads successfully enable Start-button
+            ! import menu ~ when URL or file is inputed (onChange) disable the other ~ if GIF loads successfully enable Start-button
             ! warning BEFORE decoding GIFs over ~ 10MiB (also check MIME type when loading)
             ! loading screen ~ with progressbar
-            timeTickmarks indicate frame timestamps ~ ignore for user-input-flags
-            the htmlFrameCanvas should only be rendered to if it's visible
-            color tables are grids
-            style disabled/readonly fields normal ~ exceptions should use css "cursor: not-allowed;"
-            when userInputLock is ON then the normal userInptu button is disabled
-            when user input is expected and lock is OFF highlight userInputField (border color lime-green ~)
-            auto hide gifView buttons after 1sec no mouse movement (js mouse move) or mouse leaves div (css hover)
-            URL parameters: gifURL (string) | fullWindow (0/1) | fitWindow (0/1) | imgSmoothing (0/1) | frameIndex (int) | status (string/int: pause-0/play-1/reverse-2)
-            > also frame canvas ~ fit window only one (gif > frame)
-            realtime canvas updates when changing frameRange ?! or limit to animation frames ~ 60fps
-            fieldsets resizeable ? (color tables / comments)
-            fullWindow and frameFullWindow scale the canvas to browser window size (and add title "click anywhere to show details" to canvas) and when clicked anywhere (on the canvas) revert this (gif can still be controlled via hotkeys ~)
+            ~ timeTickmarks indicate frame timestamps ~ ignore for user-input-flags
+            ? the htmlFrameCanvas should only be rendered to if it's visible
+            ~ use offscreen canvas for special disposal method case (3)
+            ! when userInputLock is ON then the normal userInptu button is disabled
+            ! when user input is expected and lock is OFF highlight userInputField (border color lime-green ~)
+            ? auto hide gifView buttons after 1sec no mouse movement (js mouse move) or mouse leaves div (css hover)
+            ! URL parameters: gifURL (string) | fullWindow (0/1) | fitWindow (0/1) | imgSmoothing (0/1) | frameIndex (int) | status (string/int: pause-0/play-1/reverse-2)
+            >> also frame canvas ~ fit window only one (gif > frame)
+            ! clicking on frame slider should pause playback and render current frame selected (when flipping through frames the delay/timeout should not decrease/update)
+            ? fieldsets/container resizeable (vertical) ~ with limits/defaults
             ? flags for rendering ~ disable background-frame (background-color transparent?) ~ choose transparent color (index?)
             ? show data of reserved fields
             ? fps view (based on animation frames not GIF playback fps)
             ! fps of the canvas update rate (animation frame rate)
             ! add title="" to every element
-            ? don't update frame information during playback ? ~ to fast ? performance / lag ? test !
-            ~ zoom controls
-            ~ speed controls
-            ! loop controls ~ default off unless the netscape extension says loop ?
-            ~ useless stats
-            ! remove non-default classes and closed/non-standard opens (testing)
-            ? context menu for input-color fields ~ shows RGB values & hex code ~ instead of writing color code after input-color
-            zoom and pan for gif and frame canvas view syncronized ?
-            > pan update canvas margin top/left via JS from 0/0 px (centered) up to {
-                  left edge at 50% canvas width     margin-left
-                 right edge at 50% canvas width *-1 margin-left
-                   top edge at 50% canvas width     margin-top
-                bottom edge at 50% canvas width *-1 margin-top
-            } (when left mouse button is down and mouse moves ! change my amount mouse moves not mose position)
-            > zoom update canvas --canvas-width ("<width-attr>px") and --scaler ("1.0") css variables
-            ! update css var --canvas-width ("<width-attr>px") when adding class "real" to canvas
-            ! change unicode symbol when toggling canvas size ~ 0🞕 1🞑
-            ! change unicode symbol when toggling canvas filter ~ 0🙾 1🙼 (and class "pixel")
-            ~ add comment: canvas context2d imageSmoothingEnabled (true) and imageSmoothingQuality (low medium high) are only for drawn images that are distorted or scaled, but since here the GIF is rendered at native resolution (within the canvas) the only smooth/sharp that is possible is via CSS image-rendering
+            ? don't update frame information during playback ? ~ to fast ? performance / lag ? test ! ~ only when details are open ?
+            ? speed controls
+            ? loop controls ~ default off unless the netscape extension says loop ?
+            ? useless stats
+            ? (left) click on input-color field copies the colors hex code
+            ? (AppExt) raw bytes as hex string (textarea) ~ instead of copy button ? both
+            ~ gif and frame canvas have same size, pan, and zoom
+            ? maybe add scroll shadows ↓
+            >> CSS style   https://github.com/MAZ01001/MAZ01001.github.io/blob/master/index.html#L48-L60
+            >> JS function https://github.com/MAZ01001/MAZ01001.github.io/blob/master/index.html#L250-L270
+            >> JS event    https://github.com/MAZ01001/MAZ01001.github.io/blob/master/index.html#L318-L320
+            ?! move AppExt list to gif panel
+            ?! move comments to frame panel (last in table)
+            ?! move frame disposal method ot end of table (before comment)
         -->
-        <div id="gifView" class="full">
+        <div id="gifView" title="GIF render canvas">
             <div id="gifViewButtons">
-                <input type="button" id="fullWindow" title="Scale canvas to browser size (hides info panel and controls)" value="⤢">
+                <input type="button" id="fullWindow" data-toggle="0" title="Toggle canvas fullscreen window" value="⤢">
                 <input type="button" id="fitWindow" data-toggle="0" title="Toggle between fit to window (🞕) and actual size (🞑)" value="🞕">
                 <input type="button" id="imgSmoothing" data-toggle="1" title="Toggle between pixelated (🙾) and smooth (🙼) image rendering" value="🙼">
             </div>
-            <canvas id="htmlCanvas" width="920" height="720" title="GIF render canvas">Your browser does not support the HTML canvas element</canvas>
+            <canvas id="htmlCanvas">Your browser does not support the HTML canvas element</canvas>
         </div>
         <label for="timeRange" title="Current timestamp">Time: <input type="range" id="timeRange" disabled min="0" value="0" list="timeTickmarks"> <span id="time">0</span> ms</label>
         <datalist id="timeTickmarks"></datalist>
@@ -69,13 +62,16 @@
             <input type="button" id="seekPrevious" value="&LeftArrowBar;" title="previous frame (paused)">
             <input type="button" id="reverse" value="⏴" title="reverse play">
             <input type="button" id="pause" value="⏸" title="pause">
-            <input type="button" id="play" value="⏵" title="play">
+            <input type="button" id="play" value="⏵" title="play" autofocus>
             <input type="button" id="seekNext" value="&RightArrowBar;" title="next frame (paused)">
             <input type="button" id="seekEnd" value="⏭" title="last frame (paused)">
         </div>
         <fieldset id="userInputField"><legend title="If highlighted blue needs user input to continue playback">User input</legend>
-            <label for="userInputTimeout">Timeout: <input type="range" id="userInputTimeout" disabled min="0" value="0" class="none infinity"> <span id="userInputTimeoutTime">0</span> ms</label>
+            <!-- TODO CSS class -->
+            <label for="userInputTimeout" title="Timeout for current frame (if present / when waiting for user input)">Timeout: <input type="range" id="userInputTimeout" disabled min="0" value="0" class="none infinity"> <span id="userInputTimeoutTime">0</span> ms</label>
+            <!-- TODO update CSS -->
             <input type="button" id="userInput" title="Click to continue playing GIF" value="Continue">
+            <!-- TODO update CSS -->
             <input type="button" id="userInputLock" data-toggle="0" title="Click to toggle instant user input" value="Lock">
         </fieldset>
         <div id="infoPanels">
@@ -95,17 +91,21 @@
                         <fieldset><legend title="The global color table of the GIF">Global color table</legend>
                             <div id="globalColorTable">
                                 <!-- auto gen -->
-                                <label title="Color index 0 (background color)" class="background-flag">[0] <input type="color" disabled value="#000000"></label>
-                                <label title="Color index 1 (transparent color)" class="transparent-flag">[1] <input type="color" disabled value="#FF00FF"></label>
-                                <label title="Color index 2">[2] <input type="color" disabled value="#FF0000"></label>
-                                <label title="Color index 3">[3] <input type="color" disabled value="#00FF00"></label>
-                                <label title="Color index 4">[4] <input type="color" disabled value="#0000FF"></label>
+                                <!-- TODO <span>Empty list (see local color tables)</span> -->
+                                <!-- TODO CSS class -->
+                                <label title="Color index 0 (background color)" class="background-flag">[0] <input type="color" value="#000000"></label>
+                                <!-- TODO CSS class -->
+                                <label title="Color index 1 (transparent color)" class="transparent-flag">[1] <input type="color" value="#FF00FF"></label>
+                                <label title="Color index 2">[2] <input type="color" value="#FF0000"></label>
+                                <label title="Color index 3">[3] <input type="color" value="#00FF00"></label>
+                                <label title="Color index 4">[4] <input type="color" value="#0000FF"></label>
                             </div>
                         </fieldset>
                         <fieldset><legend title="Comments in the GIF file and the frame index of where they were found">Comments</legend>
                             <div id="commentsList">
                                 <!-- auto gen -->
-                                <label title="Comment on frame 0">[0] <textarea readonly>TEST - 0</textarea></label>
+                                <!-- TODO <span>Empty list</span> -->
+                                <label title="Comment on frame 0">[0] <textarea readonly>Lorem ipsum dolor sit amet, consectetur adipiscing elit. Nihil sane. Peccata paria. Fortasse id optimum, sed ubi illud: Plus semper voluptatis? Nos quidem Virtutes sic natae sumus, ut tibi serviremus, aliud negotii nihil habemus. Duo Reges: constructio interrete. Saepe ab Aristotele, a Theophrasto mirabiliter est laudata per se ipsa rerum scientia; Haec quo modo conveniant, non sane intellego. Sic, et quidem diligentius saepiusque ista loquemur inter nos agemusque communiter.</textarea></label>
                                 <label title="Comment on frame 1">[1] <textarea readonly>TEST - 1</textarea></label>
                                 <label title="Comment on frame 5">[5] <textarea readonly>TEST - 5</textarea></label>
                                 <label title="Comment on frame 6">[6] <textarea readonly>TEST - 6</textarea></label>
@@ -116,14 +116,14 @@
                 </details>
             </fieldset>
             <fieldset><legend title="Information of the currently displayed frame">Frame info</legend>
-                <details><summary>Click to view frame</summary>
-                    <div id="frameView" class="full">
+                <details><summary id="frameViewSummary">Click to view frame</summary>
+                    <div id="frameView" title="Frame render canvas">
                         <div id="frameViewButtons">
-                            <input type="button" id="frameFullWindow" title="Scale canvas to browser size (hides info panel and controls)" value="⤢">
+                            <input type="button" id="frameFullWindow" data-toggle="0" title="Toggle canvas fullscreen window" value="⤢">
                             <input type="button" id="frameFitWindow" data-toggle="0" title="Toggle between fit to window (🞕) and actual size (🞑)" value="🞕">
                             <input type="button" id="frameImgSmoothing" data-toggle="1" title="Toggle between pixelated (🙾) and smooth (🙼) image rendering" value="🙼">
                         </div>
-                        <canvas id="htmlFrameCanvas" width="100" height="100" title="Frame render canvas">Your browser does not support the HTML canvas element</canvas>
+                        <canvas id="htmlFrameCanvas">Your browser does not support the HTML canvas element</canvas>
                     </div>
                 </details>
                 <details><summary>Click to toggle contents</summary>
@@ -132,32 +132,35 @@
                             <tr><th>Name</th><th>Value</th></tr>
                             <tr title="The width*height of the current frame"><td>Size</td><td><span id="frameWidth">0</span> * <span id="frameHeight">0</span> px</td></tr>
                             <tr title="The position of the current frame from the left/top edge of the GIF"><td>Position</td><td><span id="frameLeft">0</span> / <span id="frameTop">0</span> px</td></tr>
-                            <tr title="The disposal method of the current frame"><td>Disposal method</td><td><span id="frameDisposalMethod">[0 unspecified]<br>Replaces current canvas content</span></td></tr>
+                            <tr title="The disposal method of the current frame"><td>Disposal method</td><td id="frameDisposalMethod">[0 unspecified]<br>Replaces current canvas content</td></tr>
                             <tr title="How long this frame is displayed for"><td>Time</td><td><span id="frameTime">0</span> ms</td></tr>
-                            <tr title="Estimated Frames-Per-Second of the GIF if every frame had this time"><td>FPS</td><td><span id="frameFPS">0</span> frames/sec</td></tr>
                             <tr title="If the user input flag is set for the current frame"><td>User input flag</td><td><input type="checkbox" id="frameUserInputFlag" disabled></td></tr>
                         </table>
                         <fieldset><legend>Local color table</legend>
                             <div id="frameColorTable">
                                 <!-- auto gen -->
-                                <label title="Color index 0 (background color)" class="background-flag">[0] <input type="color" disabled value="#000000"></label>
-                                <label title="Color index 1 (transparent color)" class="transparent-flag">[1] <input type="color" disabled value="#FF00FF"></label>
-                                <label title="Color index 2">[2] <input type="color" disabled value="#FF0000"></label>
-                                <label title="Color index 3">[3] <input type="color" disabled value="#00FF00"></label>
-                                <label title="Color index 4">[4] <input type="color" disabled value="#0000FF"></label>
+                                <!-- TODO <span>Empty list (see global color table)</span> -->
+                                <!-- TODO CSS class -->
+                                <label title="Color index 0 (background color)" class="background-flag">[0] <input type="color" value="#000000"></label>
+                                <!-- TODO CSS class -->
+                                <label title="Color index 1 (transparent color)" class="transparent-flag">[1] <input type="color" value="#FF00FF"></label>
+                                <label title="Color index 2">[2] <input type="color" value="#FF0000"></label>
+                                <label title="Color index 3">[3] <input type="color" value="#00FF00"></label>
+                                <label title="Color index 4">[4] <input type="color" value="#0000FF"></label>
                             </div>
                         </fieldset>
                         <fieldset><legend title="Text that is displayed during this frame">Text</legend>
                             <details open><summary>Click to toggle contents</summary>
-                                <div id="frameTextArea">
+                                <!-- TODO CSS class -->
+                                <div id="frameTextArea" class="empty">
                                     <table>
                                         <tr><th>Name</th><th>Value</th></tr>
-                                        <tr title="The text to display on the current frame"><td>String</td><td><span id="frameText">TEXT</span></td></tr>
+                                        <tr title="The text to display on the current frame"><td>String</td><td id="frameText">TEXT</td></tr>
                                         <tr title="The width*height of the character grid"><td>Grid size</td><td><span id="frameTextWidth">0</span> * <span id="frameTextHeight">0</span> px</td></tr>
                                         <tr title="The position of the character grid from the left/top edge of the GIF"><td>Grid position</td><td><span id="frameTextLeft">0</span> / <span id="frameTextTop">0</span> px</td></tr>
                                         <tr title="The width*height for each cell in the character grid"><td>Character size</td><td><span id="frameTextCharWidth">0</span> * <span id="frameTextCharHeight">0</span> px</td></tr>
-                                        <tr title="The foreground color of the text"><td>Foreground</td><td><input type="color" id="frameTextCharForeground" disabled value="#FFFFFF"></td></tr>
-                                        <tr title="Teh background color of the text"><td>Background</td><td><input type="color" id="frameTextCharBackground" disabled value="#000000"></td></tr>
+                                        <tr title="The foreground color of the text (click to copy hex code)"><td>Foreground</td><td><input type="color" id="frameTextCharForeground" value="#FFFFFF"></td></tr>
+                                        <tr title="Teh background color of the text (click to copy hex code)"><td>Background</td><td><input type="color" id="frameTextCharBackground" value="#000000"></td></tr>
                                     </table>
                                 </div>
                             </details>
@@ -165,21 +168,33 @@
                     </div>
                 </details>
             </fieldset>
-            <fieldset><legend>Application extensions</legend>
+            <fieldset><legend title="Application-Extensions in the GIF file">Application-Extensions</legend>
                 <details><summary>Click to toggle contents</summary>
                     <div id="appExtList">
                         <!-- auto gen -->
-                        <fieldset><legend><span>APPLICAT</span> <span>1.0</span></legend>
+                        <!-- TODO <span>Empty list</span> -->
+                        <fieldset><legend title="Application-Extension identifier (8 characters) and authentication code (3 characters)"><span>APPLICAT</span> <span>1.0</span></legend>
                             <span title="Description">unknown extension</span>
                             <input type="button" title="Click to copy raw binary to clipboard" value="Copy raw binary">
-                            <!-- TODO ? raw bytes as hex string ~ instead of copy button -->
+                        </fieldset>
+                        <fieldset><legend title="Application-Extension identifier (8 characters) and authentication code (3 characters)"><span>APPLICAT</span> <span>1.0</span></legend>
+                            <span title="Description">unknown extension</span>
+                            <input type="button" title="Click to copy raw binary to clipboard" value="Copy raw binary">
+                        </fieldset>
+                        <fieldset><legend title="Application-Extension identifier (8 characters) and authentication code (3 characters)"><span>APPLICAT</span> <span>1.0</span></legend>
+                            <span title="Description">unknown extension</span>
+                            <input type="button" title="Click to copy raw binary to clipboard" value="Copy raw binary">
+                        </fieldset>
+                        <fieldset><legend title="Application-Extension identifier (8 characters) and authentication code (3 characters)"><span>APPLICAT</span> <span>1.0</span></legend>
+                            <span title="Description">unknown extension</span>
+                            <input type="button" title="Click to copy raw binary to clipboard" value="Copy raw binary">
                         </fieldset>
                     </div>
                 </details>
             </fieldset>
         </div>
     </div>
-    <dialog id="importMenu">
+    <dialog id="importMenu"><!-- TODO update styling -->
         <h2>Import</h2>
         <fieldset><legend title="Load a GIF from URL or a file">Load a GIF file</legend>
             <input type="url" id="importURL" placeholder="https://example.com/test.gif">
@@ -201,35 +216,6 @@
             <input type="button" id="confirmAbort" value="Abort" title="abort action" autofocus>
         </div>
     </dialog>
-    <script>
-        // TODO remove test image
-        [htmlCanvas,htmlFrameCanvas].forEach(cnv=>{
-            /**@type {CanvasRenderingContext2D}*/
-            const cnx=cnv.getContext("2d");
-            cnx.imageSmoothingEnabled=false;
-        });
-        const fn=()=>{
-            "use strict";
-            for(const cnv of [htmlCanvas,htmlFrameCanvas]){
-                /**@type {CanvasRenderingContext2D}*/
-                const cnx=cnv.getContext("2d");
-                cnx.fillStyle="red";
-                cnx.fillRect(0,0,cnv.width,cnv.height);
-                cnx.fillStyle="blue";
-                cnx.fillRect(cnv.width*.5-25,cnv.height*.5-25,50,50);
-                cnx.strokeStyle="black";
-                cnx.beginPath();
-                cnx.moveTo(0,0);
-                cnx.lineTo(cnv.width,cnv.height);
-                cnx.moveTo(0,cnv.height);
-                cnx.lineTo(cnv.width,0);
-                cnx.stroke();
-                cnx.closePath();
-            }
-            requestAnimationFrame(fn);
-        };
-        fn();
-    </script>
-    <!-- TODO <script src="./script.js"></script> -->
+    <script src="./script.js"></script>
 </body>
 </html>

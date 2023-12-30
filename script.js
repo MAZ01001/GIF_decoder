@@ -490,7 +490,7 @@ const decodeGIF=async(gifURL,progressCallback,avgAlpha)=>{
         ajax.open('GET',gifURL,true);
         ajax.send();
     });
-}
+};
 /**
  * __extract the animation loop amount from `gif`__
  * @param {GIF} gif - a parsed GIF object
@@ -502,7 +502,7 @@ const getGIFLoopAmount=gif=>{
         return extension.data[1]+(extension.data[2]<<8);
     }
     return NaN;
-}
+};
 
 //~  _   _ ________  ___ _       _____ _                           _
 //~ | | | |_   _|  \/  || |     |  ___| |                         | |
@@ -511,21 +511,25 @@ const getGIFLoopAmount=gif=>{
 //~ | | | | | | | |  | || |____ | |___| |  __/ | | | | |  __/ | | | |_\__ \
 //~ \_| |_/ \_/ \_|  |_/\_____/ \____/|_|\___|_| |_| |_|\___|_| |_|\__|___/
 
-// TODO change input to span / table cell !
-
 /** HTML elements in DOM */
 const html=Object.freeze({
+    /** @type {HTMLElement} DOM root (`<html>`) */
+    root: document.documentElement,
     /** @type {HTMLDivElement} Main container *///@ts-ignore element does exist in DOM
     box: document.getElementById("box"),
+    /** @type {HTMLHeadingElement} Main page heading (element before {@linkcode html.view.view}) *///@ts-ignore element does exist in DOM
+    heading: document.getElementById("gifHeading"),
     /** GIF view box */
     view: Object.freeze({
         /** @type {HTMLDivElement} View box container *///@ts-ignore element does exist in DOM
         view: document.getElementById("gifView"),
-        /** @type {HTMLInputElement} Button to scale {@linkcode html.view.view} to browser width (over info panel and controls) via class `full` *///@ts-ignore element does exist in DOM
+        /** @type {HTMLDivElement} container for the {@linkcode html.view.htmlCanvas} controls *///@ts-ignore element does exist in DOM
+        controls: document.getElementById("gifViewButtons"),
+        /** @type {HTMLInputElement} Button to `data-toggle` scale {@linkcode html.view.view} to browser width (on `⤢` off `🗙`) via class `full` *///@ts-ignore element does exist in DOM
         fullWindow: document.getElementById("fullWindow"),
-        /** @type {HTMLInputElement} Button to toggle {@linkcode html.view.htmlCanvas} between fit to {@linkcode html.view.view} (default) and actual size (pan with drag controls if GIF is larger than container) via class `real` *///@ts-ignore element does exist in DOM
+        /** @type {HTMLInputElement} Button to `data-toggle` {@linkcode html.view.htmlCanvas} between 0 fit to {@linkcode html.view.view} `🞕` (default) and 1 actual size `🞑` (pan with drag controls `margin-left` & `-top` ("__px") (_offset to max half of canvas size_) and zoom `--scaler` (float)) via class `real` (and update `--canvas-width` ("__px")) *///@ts-ignore element does exist in DOM
         fitWindow: document.getElementById("fitWindow"),
-        /** @type {HTMLInputElement} Button to cycle {@linkcode html.view.canvas} image smoothing (OFF → low (default) → medium → high) *///@ts-ignore element does exist in DOM
+        /** @type {HTMLInputElement} Button to `data-toggle` {@linkcode html.view.htmlCanvas} between 0 pixelated `🙾` and 1 smooth `🙼` (default) image rendering via class `pixel` *///@ts-ignore element does exist in DOM
         imgSmoothing: document.getElementById("imgSmoothing"),
         /** @type {HTMLCanvasElement} The main GIF canvas (HTML) *///@ts-ignore element does exist in DOM
         htmlCanvas: document.getElementById("htmlCanvas"),
@@ -564,30 +568,30 @@ const html=Object.freeze({
         userInputTimeout: document.getElementById("userInputTimeout"),
         /** @type {HTMLSpanElement} Shows timeout for user input in milliseconds (see {@linkcode html.controls.userInputTimeout}) *///@ts-ignore element does exist in DOM
         userInputTimeoutTime: document.getElementById("userInputTimeoutTime"),
-        /** @type {HTMLInputElement} Button to toggle user input lock (ON / OFF (default)) if ON, does not wait and continues playback instantly *///@ts-ignore element does exist in DOM
+        /** @type {HTMLInputElement} Button to `data-toggle` user input lock (1 ON / 0 OFF (default)) if ON, does not wait and continues playback instantly *///@ts-ignore element does exist in DOM
         userInputLock: document.getElementById("userInputLock"),
         /** @type {HTMLInputElement} Button for user input, continues playback when waiting for user input *///@ts-ignore element does exist in DOM
         userInput: document.getElementById("userInput")
     }),
     /** @type {HTMLDivElement} Main info panel container *///@ts-ignore element does exist in DOM
     infoPanels: document.getElementById("infoPanels"),
+    /** @type {HTMLInputElement} Button that opens the {@linkcode html.import.menu} (at the top of {@linkcode html.infoPanels}) *///@ts-ignore element does exist in DOM
+    open: document.getElementById("open"),
     /** GIF info panel (collapsable) */
     info: Object.freeze({
-        /** @type {HTMLInputElement} Readonly, shows the name of the GIF file *///@ts-ignore element does exist in DOM
+        /** @type {HTMLTableCellElement} Shows the name of the GIF file *///@ts-ignore element does exist in DOM
         fileName: document.getElementById("fileName"),
-        /** @type {HTMLInputElement} Button that opens the {@linkcode html.import.menu} (next to {@linkcode html.info.fileName}) *///@ts-ignore element does exist in DOM
-        open: document.getElementById("open"),
-        /** @type {HTMLInputElement} Readonly, shows the total width of the GIF (in pixels) *///@ts-ignore element does exist in DOM
+        /** @type {HTMLSpanElement} Shows the total width of the GIF (in pixels) *///@ts-ignore element does exist in DOM
         totalWidth: document.getElementById("totalWidth"),
-        /** @type {HTMLInputElement} Readonly, shows the total height of the GIF (in pixels) *///@ts-ignore element does exist in DOM
+        /** @type {HTMLSpanElement} Shows the total height of the GIF (in pixels) *///@ts-ignore element does exist in DOM
         totalHeight: document.getElementById("totalHeight"),
-        /** @type {HTMLInputElement} Readonly, shows the total number of frames of the GIF *///@ts-ignore element does exist in DOM
+        /** @type {HTMLTableCellElement} Shows the total number of frames of the GIF *///@ts-ignore element does exist in DOM
         totalFrames: document.getElementById("totalFrames"),
-        /** @type {HTMLInputElement} Readonly, shows the total time of the GIF (in milliseconds) *///@ts-ignore element does exist in DOM
+        /** @type {HTMLTableCellElement} Shows the total time of the GIF (in milliseconds) *///@ts-ignore element does exist in DOM
         totalTime: document.getElementById("totalTime"),
-        /** @type {HTMLInputElement} Readonly, shows the pixel ascpect ratio of the GIF (in format `w:h` ie. `1:1`) *///@ts-ignore element does exist in DOM
+        /** @type {HTMLTableCellElement} Shows the pixel ascpect ratio of the GIF (in format `w:h` ie. `1:1`) *///@ts-ignore element does exist in DOM
         pixelAspectRatio: document.getElementById("pixelAspectRatio"),
-        /** @type {HTMLInputElement} Readonly, shows the color resolution of the GIF (in bits) *///@ts-ignore element does exist in DOM
+        /** @type {HTMLTableCellElement} Shows the color resolution of the GIF (in bits) *///@ts-ignore element does exist in DOM
         colorRes: document.getElementById("colorRes"),
         /** @type {HTMLDivElement} List of colors in the global color table of the GIF (`<label title="Color index I">[I] <input type="color" disabled></label>` (optionaly with class `background-flag` / `transparent-flag` and addition to title) for each color or `<span>Empty list (see local color tables)</span>`) *///@ts-ignore element does exist in DOM
         globalColorTable: document.getElementById("globalColorTable"),
@@ -596,35 +600,37 @@ const html=Object.freeze({
     }),
     /** GIF frame info panel (collapsable) */
     frame: Object.freeze({
+        /** @type {HTMLElement} Summary of collapsable frame view (element before {@linkcode html.frame.view}) *///@ts-ignore element does exist in DOM
+        viewContainerSummary: document.getElementById("frameViewSummary"),
         /** @type {HTMLDivElement} Collapsable (frame) view box container *///@ts-ignore element does exist in DOM
         view: document.getElementById("frameView"),
-        /** @type {HTMLInputElement} Button to scale {@linkcode html.frame.view} to browser width (over info panel and controls) via class `full` *///@ts-ignore element does exist in DOM
+        /** @type {HTMLDivElement} container for the {@linkcode html.frame.hmtlCanvas} controls *///@ts-ignore element does exist in DOM
+        controls: document.getElementById("frameViewButtons"),
+        /** @type {HTMLInputElement} Button to `data-toggle` scale {@linkcode html.frame.view} to browser width (on `⤢` off `🗙`) via class `full` *///@ts-ignore element does exist in DOM
         fullWindow: document.getElementById("frameFullWindow"),
-        /** @type {HTMLInputElement} Button to toggle {@linkcode html.frame.htmlCanvas} between fit to {@linkcode html.frame.view} (default) and actual size (pan with drag controls if frame is larger than container) via class `real` *///@ts-ignore element does exist in DOM
+        /** @type {HTMLInputElement} Button to `data-toggle` {@linkcode html.frame.htmlCanvas} between 0 fit to {@linkcode html.frame.view} `🞕` (default) and 1 actual size `🞑` (pan with drag controls `margin-left` & `-top` ("__px") (_offset to max half of canvas size_) and zoom `--scaler` (float)) via class `real` (and update `--canvas-width` ("__px")) *///@ts-ignore element does exist in DOM
         fitWindow: document.getElementById("frameFitWindow"),
-        /** @type {HTMLInputElement} Button to cycle {@linkcode html.frame.canvas} image smoothing (OFF → low (default) → medium → high) *///@ts-ignore element does exist in DOM
+        /** @type {HTMLInputElement} Button to `data-toggle` {@linkcode html.frame.htmlCanvas} between 0 pixelated `🙾` and 1 smooth `🙼` (default) image rendering via class `pixel` *///@ts-ignore element does exist in DOM
         imgSmoothing: document.getElementById("frameImgSmoothing"),
         /** @type {HTMLCanvasElement} The frame canvas (HTML) for the current frame *///@ts-ignore element does exist in DOM
         htmlCanvas: document.getElementById("htmlFrameCanvas"),
         /** @type {CanvasRenderingContext2D} The frame canvas (2D context of {@linkcode html.frame.htmlCanvas}) for the current frame *///@ts-ignore element does exist in DOM
         canvas: document.getElementById("htmlFrameCanvas").getContext("2d",{colorSpace:"srgb"}),
-        /** @type {HTMLInputElement} Readonly, shows the width of the current frame (in pixels) *///@ts-ignore element does exist in DOM
+        /** @type {HTMLSpanElement} Shows the width of the current frame (in pixels) *///@ts-ignore element does exist in DOM
         width: document.getElementById("frameWidth"),
-        /** @type {HTMLInputElement} Readonly, shows the height of the current frame (in pixels) *///@ts-ignore element does exist in DOM
+        /** @type {HTMLSpanElement} Shows the height of the current frame (in pixels) *///@ts-ignore element does exist in DOM
         height: document.getElementById("frameHeight"),
-        /** @type {HTMLInputElement} Readonly, shows the position of the current frame from the left edge of the GIF (in pixels) *///@ts-ignore element does exist in DOM
+        /** @type {HTMLSpanElement} Shows the position of the current frame from the left edge of the GIF (in pixels) *///@ts-ignore element does exist in DOM
         left: document.getElementById("frameLeft"),
-        /** @type {HTMLInputElement} Readonly, shows the position of the current frame from the top edge of the GIF (in pixels) *///@ts-ignore element does exist in DOM
+        /** @type {HTMLSpanElement} Shows the position of the current frame from the top edge of the GIF (in pixels) *///@ts-ignore element does exist in DOM
         top: document.getElementById("frameTop"),
-        /** @type {HTMLInputElement} Readonly, shows the disposal method of the current frame (index, text, and meaning) *///@ts-ignore element does exist in DOM
+        /** @type {HTMLTableCellElement} Readonly, shows the disposal method of the current frame (index, text, and meaning) *///@ts-ignore element does exist in DOM
         disposalMethod: document.getElementById("frameDisposalMethod"),
-        /** @type {HTMLInputElement} Readonly, shows the time in milliseconds this frame is displayed for *///@ts-ignore element does exist in DOM
+        /** @type {HTMLSpanElement} Shows the time in milliseconds this frame is displayed for *///@ts-ignore element does exist in DOM
         time: document.getElementById("frameTime"),
-        /** @type {HTMLInputElement} Readonly, shows the estimated FPS of the GIF if every frame had this {@linkcode html.frame.time} *///@ts-ignore element does exist in DOM
-        fps: document.getElementById("frameFPS"),
         /** @type {HTMLInputElement} Disabled checkbox to show if this frame is waiting for user input *///@ts-ignore element does exist in DOM
         userInputFlag: document.getElementById("frameUserInputFlag"),
-        /** @type {HTMLDivElement} List of colors in the local color table of the current frame (`<label title="Color index I">[I] <input type="color" disabled></label>` (optionaly with class `background-flag` / `transparent-flag` and addition to title) for each color or `<span>Empty list (see global color table)</span>`) *///@ts-ignore element does exist in DOM
+        /** @type {HTMLDivElement} List of colors in the local color table of the current frame (`<label title="Color index I">[I] <input type="color"></label>` (optionaly with class `background-flag` / `transparent-flag` and addition to title) for each color or `<span>Empty list (see global color table)</span>`) *///@ts-ignore element does exist in DOM
         localColorTable: document.getElementById("frameColorTable"),
         /**
          * Text information for this frame
@@ -635,24 +641,26 @@ const html=Object.freeze({
          * - if grid is filled and there are characters left, ignore them
          */
         text: Object.freeze({
-            /** @type {HTMLInputElement} Readonly, the text to display on top of the current frame *///@ts-ignore element does exist in DOM
+            /** @type {HTMLDivElement} The text extension container (add class `empty` if current frame doesn't have a text extension) *///@ts-ignore element does exist in DOM
+            area: document.getElementById("frameTextArea"),
+            /** @type {HTMLTableCellElement} The text to display on top of the current frame *///@ts-ignore element does exist in DOM
             text: document.getElementById("frameText"),
             /** Grid information of this text */
             grid: Object.freeze({
-                /** @type {HTMLInputElement} Readonly, the width of the text grid in pixels *///@ts-ignore element does exist in DOM
+                /** @type {HTMLSpanElement} The width of the text grid in pixels *///@ts-ignore element does exist in DOM
                 width: document.getElementById("frameTextWidth"),
-                /** @type {HTMLInputElement} Readonly, the height of the text grid in pixels *///@ts-ignore element does exist in DOM
+                /** @type {HTMLSpanElement} The height of the text grid in pixels *///@ts-ignore element does exist in DOM
                 height: document.getElementById("frameTextHeight"),
-                /** @type {HTMLInputElement} Readonly, the (top left) position of the text grid from the left edge of the GIF (logical screen) *///@ts-ignore element does exist in DOM
+                /** @type {HTMLSpanElement} The (top left) position of the text grid from the left edge of the GIF (logical screen) in pixels *///@ts-ignore element does exist in DOM
                 left: document.getElementById("frameTextLeft"),
-                /** @type {HTMLInputElement} Readonly, the (top left) position of the text grid from the top edge of the GIF (logical screen) *///@ts-ignore element does exist in DOM
+                /** @type {HTMLSpanElement} The (top left) position of the text grid from the top edge of the GIF (logical screen) in pixels *///@ts-ignore element does exist in DOM
                 top: document.getElementById("frameTextTop")
             }),
             /** Cell information of this text */
             cell: Object.freeze({
-                /** @type {HTMLInputElement} The width of each character cell (should tile the text grid perfectly) *///@ts-ignore element does exist in DOM
+                /** @type {HTMLSpanElement} The width of each character cell in pixels (should tile the text grid perfectly) *///@ts-ignore element does exist in DOM
                 width: document.getElementById("frameTextCharWidth"),
-                /** @type {HTMLInputElement} The height of each character cell (should tile the text grid perfectly) *///@ts-ignore element does exist in DOM
+                /** @type {HTMLSpanElement} The height of each character cell in pixels (should tile the text grid perfectly) *///@ts-ignore element does exist in DOM
                 height: document.getElementById("frameTextCharHeight"),
             }),
             /** @type {HTMLInputElement} The foreground color of this text (index into global color table) *///@ts-ignore element does exist in DOM
@@ -661,7 +669,7 @@ const html=Object.freeze({
             background: document.getElementById("frameTextCharBackground")
         })
     }),
-    /** @type {HTMLDivElement} List of GIF application extensions in RAW binary (`<fieldset><legend><span>APPLICAT</span> <span>1.0</span></legend><span title="Description">unknown extension</span> <input type="button" title="Click to copy raw binary to clipboard" value="Copy raw binary"></fieldset>` for each app. ext. or `<span>Empty list</span>`) *///@ts-ignore element does exist in DOM
+    /** @type {HTMLDivElement} List of GIF application extensions in RAW binary (`<fieldset><legend title="Application-Extension identifier (8 characters) and authentication code (3 characters)"><span>APPLICAT</span> <span>1.0</span></legend><span title="Description">unknown extension</span> <input type="button" title="Click to copy raw binary to clipboard" value="Copy raw binary"></fieldset>` for each app. ext. or `<span>Empty list</span>`) *///@ts-ignore element does exist in DOM
     appExtList: document.getElementById("appExtList"),
     /** Import menu */
     import: Object.freeze({
@@ -692,6 +700,9 @@ const html=Object.freeze({
         abort: document.getElementById("confirmAbort")
     })
 });
+
+//? if(html.view.canvas==null)throw new Error();
+//? if(html.frame.canvas==null)throw new Error();
 
 //~  _____              __ _                 ______ _       _
 //~ /  __ \            / _(_)                |  _  (_)     | |
@@ -793,67 +804,242 @@ const confirmDialog=Object.seal(new class ConfirmDialog{
     ((_tmpVal_=args.get("gifURL"))==null?undefined:(_tmpVal_.length>0?decodeURIComponent(_tmpVal_):undefined))??"https://upload.wikimedia.org/wikipedia/commons/a/a2/Wax_fire.gif";
 })();
 
-//~  _____      _                         ______                _   _
-//~ /  ___|    | |                 ___    |  ___|              | | (_)
-//~ \ `--.  ___| |_ _   _ _ __    ( _ )   | |_ _   _ _ __   ___| |_ _  ___  _ __  ___
-//~  `--. \/ _ \ __| | | | '_ \   / _ \/\ |  _| | | | '_ \ / __| __| |/ _ \| '_ \/ __|
-//~ /\__/ /  __/ |_| |_| | |_) | | (_>  < | | | |_| | | | | (__| |_| | (_) | | | \__ \
-//~ \____/ \___|\__|\__,_| .__/   \___/\/ \_|  \__,_|_| |_|\___|\__|_|\___/|_| |_|___/
+//~  _____      _
+//~ /  ___|    | |
+//~ \ `--.  ___| |_ _   _ _ __
+//~  `--. \/ _ \ __| | | | '_ \
+//~ /\__/ /  __/ |_| |_| | |_) |
+//~ \____/ \___|\__|\__,_| .__/
 //~                      | |
 //~                      |_|
 
 html.view.canvas.imageSmoothingEnabled=false;
 html.frame.canvas.imageSmoothingEnabled=false;
 
-/** Cycles image smoothing quality of {@linkcode html.view.canvas} one step each call (OFF → low → medium → high) and changed `data-cycle` of {@linkcode html.view.imgSmoothing} (0 to 3) */
-const cycleGIFCanvasQuality=()=>{
+//~  _   _ _                                 _             _
+//~ | | | (_)                               | |           | |
+//~ | | | |_  _____      __   ___ ___  _ __ | |_ _ __ ___ | |___
+//~ | | | | |/ _ \ \ /\ / /  / __/ _ \| '_ \| __| '__/ _ \| / __|
+//~ \ \_/ / |  __/\ V  V /  | (_| (_) | | | | |_| | | (_) | \__ \
+//~  \___/|_|\___| \_/\_/    \___\___/|_| |_|\__|_|  \___/|_|___/
+
+html.view.fullWindow.addEventListener("click",()=>{
     "use strict";
-    if(!html.view.canvas.imageSmoothingEnabled){
-        html.view.imgSmoothing.dataset.cycle="1";
-        html.view.canvas.imageSmoothingEnabled=true;
-        html.view.canvas.imageSmoothingQuality="low";
-    }else switch(html.view.canvas.imageSmoothingQuality){
-        case "low":
-            html.view.imgSmoothing.dataset.cycle="2";
-            html.view.canvas.imageSmoothingQuality="medium";
-        break;
-        case "medium":
-            html.view.imgSmoothing.dataset.cycle="3";
-            html.view.canvas.imageSmoothingQuality="high";
-        break;
-        case "high":
-            html.view.imgSmoothing.dataset.cycle="0";
-            html.view.canvas.imageSmoothingEnabled=false;
-        break;
+    if((html.view.fullWindow.dataset.toggle??"0")==="0"){
+        html.view.fullWindow.dataset.toggle="1";
+        html.view.fullWindow.value="🗙";
+        html.view.view.classList.add("full");
+        html.box.insertAdjacentElement("beforebegin",html.view.view);
+    }else{
+        html.view.fullWindow.dataset.toggle="0";
+        html.view.fullWindow.value="⤢";
+        html.view.view.classList.remove("full");
+        html.heading.insertAdjacentElement("afterend",html.view.view);
     }
-};
-/** Cycles image smoothing quality of {@linkcode html.frame.canvas} one step each call (OFF → low → medium → high) and changed `data-cycle` of {@linkcode html.frame.imgSmoothing} (0 to 3) */
-const cycleFrameCanvasQuality=()=>{
+},{passive:true});
+html.frame.fullWindow.addEventListener("click",()=>{
     "use strict";
-    if(!html.frame.canvas.imageSmoothingEnabled){
-        html.frame.imgSmoothing.dataset.cycle="1";
-        html.frame.canvas.imageSmoothingEnabled=true;
-        html.frame.canvas.imageSmoothingQuality="low";
-    }else switch(html.frame.canvas.imageSmoothingQuality){
-        case "low":
-            html.frame.imgSmoothing.dataset.cycle="2";
-            html.frame.canvas.imageSmoothingQuality="medium";
-        break;
-        case "medium":
-            html.frame.imgSmoothing.dataset.cycle="3";
-            html.frame.canvas.imageSmoothingQuality="high";
-        break;
-        case "high":
-            html.frame.imgSmoothing.dataset.cycle="0";
-            html.frame.canvas.imageSmoothingEnabled=false;
-        break;
+    if((html.frame.fullWindow.dataset.toggle??"0")==="0"){
+        html.frame.fullWindow.dataset.toggle="1";
+        html.frame.fullWindow.value="🗙";
+        html.frame.view.classList.add("full");
+        html.box.insertAdjacentElement("beforebegin",html.frame.view);
+    }else{
+        html.frame.fullWindow.dataset.toggle="0";
+        html.frame.fullWindow.value="⤢";
+        html.frame.view.classList.remove("full");
+        html.frame.viewContainerSummary.insertAdjacentElement("afterend",html.frame.view);
     }
-};
+},{passive:true});
+
+html.view.fitWindow.addEventListener("click",()=>{
+    "use strict";
+    if((html.view.fitWindow.dataset.toggle??"0")==="0"){
+        html.view.fitWindow.dataset.toggle="1";
+        html.view.fitWindow.value="🞑";
+        html.view.htmlCanvas.classList.add("real");
+        html.view.view.title="Drag with left mouse button to move image, reset position with double left click, zoom with mouse wheel (faster with shift and slower with alt), and reset zoom by clicking the mouse wheel";
+        html.root.style.setProperty("--canvas-width",`${html.view.htmlCanvas.width}px`);
+    }else{
+        html.view.fitWindow.dataset.toggle="0";
+        html.view.fitWindow.value="🞕";
+        html.view.htmlCanvas.classList.remove("real");
+        html.view.view.title="GIF render canvas";
+    }
+},{passive:true});
+html.frame.fitWindow.addEventListener("click",()=>{
+    "use strict";
+    if((html.frame.fitWindow.dataset.toggle??"0")==="0"){
+        html.frame.fitWindow.dataset.toggle="1";
+        html.frame.fitWindow.value="🞑";
+        html.frame.htmlCanvas.classList.add("real");
+        html.frame.view.title="Drag with left mouse button to move image, reset position with double left click, zoom with mouse wheel (faster with shift and slower with alt), and reset zoom by clicking the mouse wheel";
+        html.root.style.setProperty("--canvas-width",`${html.frame.htmlCanvas.width}px`);
+    }else{
+        html.frame.fitWindow.dataset.toggle="0";
+        html.frame.fitWindow.value="🞕";
+        html.frame.htmlCanvas.classList.remove("real");
+        html.frame.view.title="Frame render canvas";
+    }
+},{passive:true});
+
+//~ canvas context2d imageSmoothingEnabled (true) and imageSmoothingQuality (low medium high) are only for drawn images that are distorted or scaled, but since here the GIF is rendered at native resolution (within the canvas) the only smooth/sharp that is possible is via CSS image-rendering
+html.view.imgSmoothing.addEventListener("click",()=>{
+    "use strict";
+    if((html.view.imgSmoothing.dataset.toggle??"1")==="0"){
+        html.view.imgSmoothing.dataset.toggle="1";
+        html.view.imgSmoothing.value="🙼";
+        html.view.htmlCanvas.classList.remove("pixel");
+    }else{
+        html.view.imgSmoothing.dataset.toggle="0";
+        html.view.imgSmoothing.value="🙾";
+        html.view.htmlCanvas.classList.add("pixel");
+    }
+},{passive:true});
+html.frame.imgSmoothing.addEventListener("click",()=>{
+    "use strict";
+    if((html.frame.imgSmoothing.dataset.toggle??"1")==="0"){
+        html.frame.imgSmoothing.dataset.toggle="1";
+        html.frame.imgSmoothing.value="🙼";
+        html.frame.htmlCanvas.classList.remove("pixel");
+    }else{
+        html.frame.imgSmoothing.dataset.toggle="0";
+        html.frame.imgSmoothing.value="🙾";
+        html.frame.htmlCanvas.classList.add("pixel");
+    }
+},{passive:true});
+
+(()=>{//~ canvas (syncronised) pan and zoom controls
+    let dragging=false,
+        mouseX=0,
+        mouseY=0,
+        scaler=1;
+    const canvasStyle=window.getComputedStyle(html.view.htmlCanvas),
+        /** @type {(left?:number,top?:number)=>void} set canvas offset position (pixel) - default: recalculate position */
+        setPosition=(left,top)=>{
+            "use strict";
+            if(left==null)left=Number.parseInt(html.root.style.getPropertyValue("--offset-view-left"));
+            if(top==null)top=Number.parseInt(html.root.style.getPropertyValue("--offset-view-top"));
+            const width=Number.parseFloat(canvasStyle.width),
+                height=Number.parseFloat(canvasStyle.height);
+            html.root.style.setProperty("--offset-view-left",`${Math.trunc(Math.max(width*-.5,Math.min(width*.5,left)))}px`);
+            html.root.style.setProperty("--offset-view-top",`${Math.trunc(Math.max(height*-.5,Math.min(height*.5,top)))}px`);
+        };
+    html.root.style.setProperty("--offset-view-left","0px");
+    html.root.style.setProperty("--offset-view-top","0px");
+    //~ reset dragging
+    html.view.view.addEventListener("dblclick",ev=>{
+        "use strict";
+        if((html.view.fitWindow.dataset.toggle??"0")==="0")return;
+        setPosition(0,0);
+        ev.preventDefault();
+    });
+    html.frame.view.addEventListener("dblclick",ev=>{
+        "use strict";
+        if((html.frame.fitWindow.dataset.toggle??"0")==="0")return;
+        setPosition(0,0);
+        ev.preventDefault();
+    });
+    //~ reset zoom
+    html.view.view.addEventListener("mousedown",ev=>{
+        "use strict";
+        if(ev.button!==1||(html.view.fitWindow.dataset.toggle??"0")==="0")return;
+        scaler=1;
+        html.root.style.setProperty("--canvas-scaler","1");
+        setPosition();
+        ev.preventDefault();
+    },{passive:false});
+    html.frame.view.addEventListener("mousedown",ev=>{
+        "use strict";
+        if(ev.button!==1||(html.frame.fitWindow.dataset.toggle??"0")==="0")return;
+        scaler=1;
+        html.root.style.setProperty("--canvas-scaler","1");
+        setPosition();
+        ev.preventDefault();
+    },{passive:false});
+    //~ zoom
+    document.addEventListener("wheel",ev=>{
+        "use strict";
+        if(ev.ctrlKey||!(
+            ((html.view.view===ev.target||html.view.htmlCanvas===ev.target)&&(html.view.fitWindow.dataset.toggle??"0")==="1")
+            ||((html.frame.view===ev.target||html.frame.htmlCanvas===ev.target)&&(html.frame.fitWindow.dataset.toggle??"0")==="1")
+        ))return;
+        const previousWidth=Number.parseFloat(canvasStyle.width),
+            previousHeight=Number.parseFloat(canvasStyle.height);
+        html.root.style.setProperty("--canvas-scaler",String(
+            Math.exp((
+                scaler=Math.max(html.view.htmlCanvas.width*-.5,
+                    Math.min(html.view.htmlCanvas.width*.5,
+                        ev.deltaY*-(ev.shiftKey?.5:ev.altKey?.01:.1)
+                        +scaler
+                    )
+                )
+            )*.01)
+        ));
+        setPosition(
+            (Number.parseFloat(canvasStyle.width)*Number.parseInt(html.root.style.getPropertyValue("--offset-view-left")))/previousWidth,
+            (Number.parseFloat(canvasStyle.height)*Number.parseInt(html.root.style.getPropertyValue("--offset-view-top")))/previousHeight
+        );
+        ev.preventDefault();
+    },{passive:false});
+    //~ dragging
+    document.addEventListener("mousedown",ev=>{
+        "use strict";
+        if(ev.button!==0||!(
+            ((html.view.view===ev.target||html.view.htmlCanvas===ev.target)&&(html.view.fitWindow.dataset.toggle??"0")==="1")
+            ||((html.frame.view===ev.target||html.frame.htmlCanvas===ev.target)&&(html.frame.fitWindow.dataset.toggle??"0")==="1")
+        ))return;
+        mouseX=ev.clientX;
+        mouseY=ev.clientY;
+        dragging=true;
+        document.documentElement.classList.add("grabbing");
+        ev.preventDefault();
+    },{passive:false});
+    document.addEventListener("mousemove",ev=>{
+        "use strict";
+        if(!dragging)return;
+        setPosition(
+            Number.parseInt(html.root.style.getPropertyValue("--offset-view-left"))+(ev.clientX-mouseX),
+            Number.parseInt(html.root.style.getPropertyValue("--offset-view-top"))+(ev.clientY-mouseY)
+        );
+        mouseX=ev.clientX;
+        mouseY=ev.clientY;
+    },{passive:true});
+    document.addEventListener("mouseup",()=>{
+        "use strict";
+        dragging=false;
+        document.documentElement.classList.remove("grabbing");
+    },{passive:true});
+})();
+
+//~  _   _ _   _ _ _ _            __                  _   _
+//~ | | | | | (_) (_) |          / _|                | | (_)
+//~ | | | | |_ _| |_| |_ _   _  | |_ _   _ _ __   ___| |_ _  ___  _ __  ___
+//~ | | | | __| | | | __| | | | |  _| | | | '_ \ / __| __| |/ _ \| '_ \/ __|
+//~ | |_| | |_| | | | |_| |_| | | | | |_| | | | | (__| |_| | (_) | | | \__ \
+//~  \___/ \__|_|_|_|\__|\__, | |_|  \__,_|_| |_|\___|\__|_|\___/|_| |_|___/
+//~                       __/ |
+//~                      |___/
 
 // TODO utility functions
 
 const loadGifURL=url=>{};
 const loadGifFile=file=>{};
+
+/**
+ * ## Copies own `value` to the clipboard and prevents default behaviour
+ * (_use this for click events on color input fields to copy its hex code without showing the color input dialogue_)
+ * @this {HTMLInputElement} `<input type="color">`
+ * @param {MouseEvent} ev - `click` event
+ */
+const copyColorValue=function(ev){
+    "use strict";
+    ev.preventDefault();
+    navigator.clipboard.writeText(this.value).then(
+        null,
+        reason=>console.warn("Couldn't copy color %s, reason: %O",this.value,reason)
+    );
+}
 
 const genHTMLColorGrid=(colorTable)=>{};
 const genHTMLCommentList=(gif)=>{};
@@ -863,6 +1049,27 @@ const updateGifInfo=gif=>{};
 const updateFrameInfo=(gif,i)=>{};
 const updateSliderValues=(gif,i,t)=>{};
 
+//~  _____                _
+//~ |  ___|              | |
+//~ | |____   _____ _ __ | |_ ___
+//~ |  __\ \ / / _ \ '_ \| __/ __|
+//~ | |___\ V /  __/ | | | |_\__ \
+//~ \____/ \_/ \___|_| |_|\__|___/
+
+html.frame.text.foreground.addEventListener("click",copyColorValue,{passive:false});
+html.frame.text.background.addEventListener("click",copyColorValue,{passive:false});
+
+html.controls.userInputLock.addEventListener("click",()=>{
+    "use strict";
+    if((html.controls.userInputLock.dataset.toggle??"0")==="0"){
+        html.controls.userInputLock.dataset.toggle="1";
+        html.controls.userInput.disabled=true;
+    }else{
+        html.controls.userInputLock.dataset.toggle="0";
+        html.controls.userInput.disabled=false;
+    }
+},{passive:true});
+
 //~  _____ ___________                      _
 //~ |  __ \_   _|  ___|                    | |
 //~ | |  \/ | | | |_     _ __ ___ _ __   __| | ___ _ __
@@ -870,11 +1077,48 @@ const updateSliderValues=(gif,i,t)=>{};
 //~ | |_\ \_| |_| |     | | |  __/ | | | (_| |  __/ |
 //~  \____/\___/\_|     |_|  \___|_| |_|\__,_|\___|_|
 
+(()=>{// TODO remove
+    //! importMenu.showModal();
+    for(const{htmlCanvas:cnv}of [html.view,html.frame]){
+        cnv.width=920;
+        cnv.height=720;
+    };
+    const fn=()=>{
+        "use strict";
+        for(const{htmlCanvas:cnv,canvas:cnx}of [html.view,html.frame]){
+            cnx.fillStyle="red";
+            cnx.fillRect(0,0,cnv.width,cnv.height);
+            cnx.fillStyle="blue";
+            cnx.fillRect(cnv.width*.5-25,cnv.height*.5-25,50,50);
+            cnx.strokeStyle="black";
+            cnx.beginPath();
+            cnx.moveTo(0,0);
+            cnx.lineTo(cnv.width,cnv.height);
+            cnx.moveTo(0,cnv.height);
+            cnx.lineTo(cnv.width,0);
+            cnx.stroke();
+            cnx.closePath();
+        }
+        requestAnimationFrame(fn);
+    };
+    fn();
+})();
+
 // TODO use animation frames and calculate timing for gif frames
 // TODO edge-case: abort update-loop if previous and current animation frame timestamp is the same value
 // TODO ~ log animation frame time ? calculate frame ~ loop or last frame
 // TODO use async functions for rendering ~ immediatly call next animation frame while doing work async ~
 
+// console.log(0);
+// (async()=>{
+//     console.log(1);
+//     await Promise.resolve();
+//     console.log(2);
+// })();
+// console.log(3);
+//=> 0 1 3 <EOF> 2
+
+throw 0;
 // TODO ↓
 
 /*

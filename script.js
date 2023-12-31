@@ -595,8 +595,8 @@ const html=Object.freeze({
         colorRes: document.getElementById("colorRes"),
         /** @type {HTMLDivElement} List of colors in the global color table of the GIF (`<label title="Color index I">[I] <input type="color" disabled></label>` (optionaly with class `background-flag` / `transparent-flag` and addition to title) for each color or `<span>Empty list (see local color tables)</span>`) *///@ts-ignore element does exist in DOM
         globalColorTable: document.getElementById("globalColorTable"),
-        /** @type {HTMLDivElement} List of comments in the GIF file (`<label title="Comment on frame I">[I] <textarea readonly>COMMENT</textarea></label>` for each frame/comment or `<span>Empty list</span>`) *///@ts-ignore element does exist in DOM
-        commentsList: document.getElementById("commentsList")
+        /** @type {HTMLDivElement} List of GIF application extensions in RAW binary (`<fieldset><legend title="Application-Extension identifier (8 characters) and authentication code (3 characters)"><span>APPLICAT</span> <span>1.0</span></legend><span title="Description">unknown extension</span> <input type="button" title="Click to copy raw binary to clipboard" value="Copy raw binary"></fieldset>` for each app. ext. or `<span>Empty list</span>`) *///@ts-ignore element does exist in DOM
+        appExtList: document.getElementById("appExtList")
     }),
     /** GIF frame info panel (collapsable) */
     frame: Object.freeze({
@@ -624,12 +624,14 @@ const html=Object.freeze({
         left: document.getElementById("frameLeft"),
         /** @type {HTMLSpanElement} Shows the position of the current frame from the top edge of the GIF (in pixels) *///@ts-ignore element does exist in DOM
         top: document.getElementById("frameTop"),
-        /** @type {HTMLTableCellElement} Readonly, shows the disposal method of the current frame (index, text, and meaning) *///@ts-ignore element does exist in DOM
-        disposalMethod: document.getElementById("frameDisposalMethod"),
         /** @type {HTMLSpanElement} Shows the time in milliseconds this frame is displayed for *///@ts-ignore element does exist in DOM
         time: document.getElementById("frameTime"),
         /** @type {HTMLInputElement} Disabled checkbox to show if this frame is waiting for user input *///@ts-ignore element does exist in DOM
         userInputFlag: document.getElementById("frameUserInputFlag"),
+        /** @type {HTMLTableCellElement} Readonly, shows the disposal method of the current frame (index, text, and meaning) *///@ts-ignore element does exist in DOM
+        disposalMethod: document.getElementById("frameDisposalMethod"),
+        /** @type {HTMLTextAreaElement} Readonly, shows comment for the current frame (if found or use class `empty`) *///@ts-ignore element does exist in DOM
+        comment: document.getElementById("frameComment"),
         /** @type {HTMLDivElement} List of colors in the local color table of the current frame (`<label title="Color index I">[I] <input type="color"></label>` (optionaly with class `background-flag` / `transparent-flag` and addition to title) for each color or `<span>Empty list (see global color table)</span>`) *///@ts-ignore element does exist in DOM
         localColorTable: document.getElementById("frameColorTable"),
         /**
@@ -669,8 +671,6 @@ const html=Object.freeze({
             background: document.getElementById("frameTextCharBackground")
         })
     }),
-    /** @type {HTMLDivElement} List of GIF application extensions in RAW binary (`<fieldset><legend title="Application-Extension identifier (8 characters) and authentication code (3 characters)"><span>APPLICAT</span> <span>1.0</span></legend><span title="Description">unknown extension</span> <input type="button" title="Click to copy raw binary to clipboard" value="Copy raw binary"></fieldset>` for each app. ext. or `<span>Empty list</span>`) *///@ts-ignore element does exist in DOM
-    appExtList: document.getElementById("appExtList"),
     /** Import menu */
     import: Object.freeze({
         /** @type {HTMLDialogElement} The import menu element (use this to open or close dialog box) *///@ts-ignore element does exist in DOM

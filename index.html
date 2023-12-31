@@ -42,9 +42,6 @@
             >> CSS style   https://github.com/MAZ01001/MAZ01001.github.io/blob/master/index.html#L48-L60
             >> JS function https://github.com/MAZ01001/MAZ01001.github.io/blob/master/index.html#L250-L270
             >> JS event    https://github.com/MAZ01001/MAZ01001.github.io/blob/master/index.html#L318-L320
-            ?! move AppExt list to gif panel
-            ?! move comments to frame panel (last in table)
-            ?! move frame disposal method ot end of table (before comment)
         -->
         <div id="gifView" title="GIF render canvas">
             <div id="gifViewButtons">
@@ -101,15 +98,26 @@
                                 <label title="Color index 4">[4] <input type="color" value="#0000FF"></label>
                             </div>
                         </fieldset>
-                        <fieldset><legend title="Comments in the GIF file and the frame index of where they were found">Comments</legend>
-                            <div id="commentsList">
+                        <fieldset><legend title="Application-Extensions in the GIF file">Application-Extensions</legend>
+                            <div id="appExtList">
                                 <!-- auto gen -->
                                 <!-- TODO <span>Empty list</span> -->
-                                <label title="Comment on frame 0">[0] <textarea readonly>Lorem ipsum dolor sit amet, consectetur adipiscing elit. Nihil sane. Peccata paria. Fortasse id optimum, sed ubi illud: Plus semper voluptatis? Nos quidem Virtutes sic natae sumus, ut tibi serviremus, aliud negotii nihil habemus. Duo Reges: constructio interrete. Saepe ab Aristotele, a Theophrasto mirabiliter est laudata per se ipsa rerum scientia; Haec quo modo conveniant, non sane intellego. Sic, et quidem diligentius saepiusque ista loquemur inter nos agemusque communiter.</textarea></label>
-                                <label title="Comment on frame 1">[1] <textarea readonly>TEST - 1</textarea></label>
-                                <label title="Comment on frame 5">[5] <textarea readonly>TEST - 5</textarea></label>
-                                <label title="Comment on frame 6">[6] <textarea readonly>TEST - 6</textarea></label>
-                                <label title="Comment on frame 9">[9] <textarea readonly>TEST - 9</textarea></label>
+                                <fieldset><legend title="Application-Extension identifier (8 characters) and authentication code (3 characters)"><span>APPLICAT</span> <span>1.0</span></legend>
+                                    <span title="Description">unknown extension</span>
+                                    <input type="button" title="Click to copy raw binary to clipboard" value="Copy raw binary">
+                                </fieldset>
+                                <fieldset><legend title="Application-Extension identifier (8 characters) and authentication code (3 characters)"><span>APPLICAT</span> <span>1.0</span></legend>
+                                    <span title="Description">unknown extension</span>
+                                    <input type="button" title="Click to copy raw binary to clipboard" value="Copy raw binary">
+                                </fieldset>
+                                <fieldset><legend title="Application-Extension identifier (8 characters) and authentication code (3 characters)"><span>APPLICAT</span> <span>1.0</span></legend>
+                                    <span title="Description">unknown extension</span>
+                                    <input type="button" title="Click to copy raw binary to clipboard" value="Copy raw binary">
+                                </fieldset>
+                                <fieldset><legend title="Application-Extension identifier (8 characters) and authentication code (3 characters)"><span>APPLICAT</span> <span>1.0</span></legend>
+                                    <span title="Description">unknown extension</span>
+                                    <input type="button" title="Click to copy raw binary to clipboard" value="Copy raw binary">
+                                </fieldset>
                             </div>
                         </fieldset>
                     </div>
@@ -132,9 +140,11 @@
                             <tr><th>Name</th><th>Value</th></tr>
                             <tr title="The width*height of the current frame"><td>Size</td><td><span id="frameWidth">0</span> * <span id="frameHeight">0</span> px</td></tr>
                             <tr title="The position of the current frame from the left/top edge of the GIF"><td>Position</td><td><span id="frameLeft">0</span> / <span id="frameTop">0</span> px</td></tr>
-                            <tr title="The disposal method of the current frame"><td>Disposal method</td><td id="frameDisposalMethod">[0 unspecified]<br>Replaces current canvas content</td></tr>
                             <tr title="How long this frame is displayed for"><td>Time</td><td><span id="frameTime">0</span> ms</td></tr>
                             <tr title="If the user input flag is set for the current frame"><td>User input flag</td><td><input type="checkbox" id="frameUserInputFlag" disabled></td></tr>
+                            <tr title="The disposal method of the current frame"><td>Disposal method</td><td id="frameDisposalMethod">[0 unspecified]<br>Replaces current canvas content</td></tr>
+                            <!-- TODO CSS class -->
+                            <tr title="Comment found in the file for the current frame"><td>Comment</td><td><textarea readonly id="frameComment" class="empty">Lorem ipsum dolor sit amet, consectetur adipiscing elit. Nihil sane. Peccata paria. Fortasse id optimum, sed ubi illud: Plus semper voluptatis? Nos quidem Virtutes sic natae sumus, ut tibi serviremus, aliud negotii nihil habemus. Duo Reges: constructio interrete. Saepe ab Aristotele, a Theophrasto mirabiliter est laudata per se ipsa rerum scientia; Haec quo modo conveniant, non sane intellego. Sic, et quidem diligentius saepiusque ista loquemur inter nos agemusque communiter.</textarea></td></tr>
                         </table>
                         <fieldset><legend>Local color table</legend>
                             <div id="frameColorTable">
@@ -164,30 +174,6 @@
                                     </table>
                                 </div>
                             </details>
-                        </fieldset>
-                    </div>
-                </details>
-            </fieldset>
-            <fieldset><legend title="Application-Extensions in the GIF file">Application-Extensions</legend>
-                <details><summary>Click to toggle contents</summary>
-                    <div id="appExtList">
-                        <!-- auto gen -->
-                        <!-- TODO <span>Empty list</span> -->
-                        <fieldset><legend title="Application-Extension identifier (8 characters) and authentication code (3 characters)"><span>APPLICAT</span> <span>1.0</span></legend>
-                            <span title="Description">unknown extension</span>
-                            <input type="button" title="Click to copy raw binary to clipboard" value="Copy raw binary">
-                        </fieldset>
-                        <fieldset><legend title="Application-Extension identifier (8 characters) and authentication code (3 characters)"><span>APPLICAT</span> <span>1.0</span></legend>
-                            <span title="Description">unknown extension</span>
-                            <input type="button" title="Click to copy raw binary to clipboard" value="Copy raw binary">
-                        </fieldset>
-                        <fieldset><legend title="Application-Extension identifier (8 characters) and authentication code (3 characters)"><span>APPLICAT</span> <span>1.0</span></legend>
-                            <span title="Description">unknown extension</span>
-                            <input type="button" title="Click to copy raw binary to clipboard" value="Copy raw binary">
-                        </fieldset>
-                        <fieldset><legend title="Application-Extension identifier (8 characters) and authentication code (3 characters)"><span>APPLICAT</span> <span>1.0</span></legend>
-                            <span title="Description">unknown extension</span>
-                            <input type="button" title="Click to copy raw binary to clipboard" value="Copy raw binary">
                         </fieldset>
                     </div>
                 </details>

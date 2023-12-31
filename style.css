@@ -139,7 +139,6 @@ div#frameColorTable{
     justify-content: flex-start;
 }
 div#globalColorTable,
-div#commentsList,
 div#frameColorTable,
 div#appExtList{
     max-height: 8rem;
@@ -328,23 +327,17 @@ div#appExtList>fieldset{
 }
 div#globalColorTable>span,
 div#frameColorTable>span,
-div#commentsList>span,
 div#appExtList>span{
     font-size: large;
     font-weight: bold;
     font-style: italic;
     color: #0A0;
 }
-div#commentsList{
-    display: grid;
-    grid-template-columns: auto 1fr;
-    gap: 0.25rem;
-    align-items: safe center;
-    justify-items: stretch;
-    place-content: safe center;
+textarea#frameComment{
+    /*~ subtract the 2px border manually, because box-sizing border-box messes with the min/max height limits */
+    width: calc(100% - 4px);
+    resize: vertical;
 }
-div#commentsList>label{display: contents;}
-div#commentsList>label>textarea{resize: vertical;}
 /*~  _____                _ _ _                 */
 /*~ /  ___|              | | | |                */
 /*~ \ `--.  ___ _ __ ___ | | | |__   __ _ _ __  */

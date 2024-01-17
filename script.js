@@ -12,15 +12,16 @@
  * @typedef {Object} GIF
  * @property {number} width the width of the image in pixels (logical screen size)
  * @property {number} height the height of the image in pixels (logical screen size)
- * @property {number} totalTime the total duration of the gif in milliseconds (all delays added together) - will be `Infinity` if there is a frame with the user input delay flag set and no timeout
+ * @property {number} totalTime the (maximum) total duration of the gif in milliseconds (all delays added together) - will be `Infinity` if there is a frame with the user input delay flag set and no timeout
  * @property {number} colorRes the color depth/resolution in bits per color (in the original) [1-8 bits]
  * @property {number} pixelAspectRatio if non zero the pixel aspect ratio will be from 4:1 to 1:4 in 1/64th increments
  * @property {boolean} sortFlag if the colors in the global color table are ordered after decreasing importance
  * @property {[number,number,number][]} globalColorTable the global color table for the GIF
- * @property {ImageData} backgroundImage an image filled with the background color (can be used as a background before the first frame) - if the global color table is not available this is transparent black
+ * @property {number|null} backgroundColorIndex index of the background color into the global color table (if the global color table is not available it's `null`) - can be used as a background before the first frame
  * @property {Frame[]} frames each frame of the GIF (decoded into single images)
- * @property {[number,string][]} comments comments in the file and on with frame they where found
+ * @property {[string,string][]} comments comments in the file and were they where found (`[<area found>,<comment>]`)
  * @property {ApplicationExtension[]} applicationExtensions all application extensions found
+ * @property {[number,Uint8Array][]} unknownExtensions all unknown extensions found (`[<identifier-1B>,<raw bytes>]`)
  * @typedef {Object} ApplicationExtension
  * @property {string} identifier 8 character string identifying the application
  * @property {string} authenticationCode 3 bytes to authenticate the application identifier
@@ -31,14 +32,15 @@
  * @property {number} width the width of this frame in pixels
  * @property {number} height the height of this frame in pixels
  * @property {DisposalMethod} disposalMethod disposal method see {@link DisposalMethod}
+ * @property {number|null} transparentColorIndex the transparency index into the local or global color table (`null` if not encountered)
  * @property {ImageData} image this frames image data
- * @property {PlainTextData|null} plainTextData the text that will be displayed on screen with this frame (if not null)
+ * @property {PlainTextData|null} plainTextData the text that will be displayed on screen with this frame (`null` if not encountered)
  * @property {boolean} userInputDelayFlag if set waits for user input before rendering the next frame (timeout after delay if that is non-zero)
- * @property {number} delayTime the delay of this frame in milliseconds
+ * @property {number} delayTime the delay of this frame in milliseconds (`0` is undefined (_wait for user input or skip frame_) - `10`ms precision)
  * @property {boolean} sortFlag if the colors in the local color table are ordered after decreasing importance
  * @property {[number,number,number][]} localColorTable the local color table for this frame
- * @property {number} reserved _reserved for future use_ (from packed field in image descriptor block)
- * @property {number} GCreserved _reserved for future use_ (from packed field in graphics control extension block)
+ * @property {number} reserved _reserved for future use_ 2bits (from packed field in image descriptor block)
+ * @property {number} GCreserved _reserved for future use_ 3bits (from packed field in graphics control extension block)
  * @typedef {Object} PlainTextData
  * @property {number} left the position of the left edge of text grid (in pixels) within the GIF (from the left edge)
  * @property {number} top the position of the top edge of text grid (in pixels) within the GIF (from the top edge)
@@ -50,7 +52,7 @@
  * @property {number} backgroundColor the index into the global color table for the background color of the text
  * @property {string} text the text to render on screen
  */
-/**@enum {number}*/
+/**@enum {number} (not flags, can only be one)*/
 const DisposalMethod=Object.freeze({
     /**unspecified > replaces entire frame*/Replace:0,
     /**do not dispose > combine with previous frame*/Combine:1,
@@ -62,15 +64,28 @@ const DisposalMethod=Object.freeze({
     /**undefined > fallback to `Replace`*/UndefinedD:7,
 });
 /**
- * __decodes a GIF into its components for rendering on a canvas__
+ * ## Decodes a GIF into its components for rendering on a canvas
  * @param {string} gifURL - the URL of a GIF file
- * @param {(percentageRead:number,frameCount:number,lastFrame:ImageData,framePos:[number,number],gifSize:[number,number])=>any} progressCallback - callback for showing progress of decoding process (when GIF is interlaced calls after each pass (4x on the same frame))
- * @param {boolean?} avgAlpha - [optional] if this is true then, when encountering a transparent pixel, it uses the average value of the pixels RGB channels to calculate the alpha channels value, otherwise alpha channel is either 0 or 1 - _default false_
- * @returns {Promise<GIF>} the GIF with each frame decoded separately
+ * @param {(percentageRead:number,frameIndex:number,frame:ImageData,framePos:[number,number],gifSize:[number,number])=>any} [progressCallback] - Optional callback for showing progress of decoding process (when GIF is interlaced calls after each pass (4x on the same frame))
+ * @param {boolean} [avgAlpha] - if this is `true` then, when encountering a transparent pixel, it uses the average value of the pixels RGB channels to calculate the alpha channels value, otherwise alpha channel is either 0 or 1 - _default `false`_
+ * @returns {Promise<GIF>} the GIF with each frame decoded separately - may reject for the following reasons
+ * - `fetch error` when trying to fetch the GIF from {@linkcode gifURL}
+ * - `fetch aborted` when trying to fetch the GIF from {@linkcode gifURL}
+ * - `loading error [CODE]` when URL yields a status code that's NOT between 200 and 299 (inclusive)
+ * - `not a supported GIF file` when GIF version is NOT `GIF89a`
+ * - `error while parsing frame [INDEX] "ERROR"` while decoding GIF - one of the following
+ * - - `GIF frame size is to large`
+ * - - `plain text extension without global color table`
+ * - - `undefined block found`
+ * @throws {TypeError} if {@linkcode gifURL} is not a string, {@linkcode progressCallback} is given but not a function, or {@linkcode avgAlpha} is given but not a boolean
  */
 const decodeGIF=async(gifURL,progressCallback,avgAlpha)=>{
     "use strict";
-    if(avgAlpha==null||typeof avgAlpha!=="boolean")avgAlpha=false;
+    if(typeof gifURL!=="string")throw new TypeError("[decodeGIF] gifURL is not a string");
+    progressCallback??=()=>null;
+    if(typeof progressCallback!=="function")throw new TypeError("[decodeGIF] progressCallback is not a function");
+    avgAlpha??=false;
+    if(typeof avgAlpha!=="boolean")throw TypeError("[decodeGIF] avgAlpha is not a boolean");
     /**
      * @typedef {Object} ByteStream
      * @property {number} pos current position in `data`
@@ -140,7 +155,7 @@ const decodeGIF=async(gifURL,progressCallback,avgAlpha)=>{
         /**trailer > end of file / GIF data*/EndOfFile:0x3B,
     });
     /**
-     * __get a color table of length `count`__
+     * ## Get a color table of length `count`
      * @param {ByteStream} byteStream - GIF data stream
      * @param {number} count - number of colours to read from `byteStream`
      * @returns {[number,number,number][]} an array of RGB color values
@@ -160,15 +175,18 @@ const decodeGIF=async(gifURL,progressCallback,avgAlpha)=>{
         return colors;
     }
     /**
-     * __parsing one block in GIF data stream__
+     * ## Parsing one block from GIF data stream
      * @param {ByteStream} byteStream - GIF data stream
      * @param {GIF} gif - GIF object to write to
-     * @param {(increment:boolean)=>number} getFrameIndex - function to get current frame index in `GIF.frames` (optionally increment before next call)
-     * @param {(newValue:number?)=>number} getTransparencyIndex - function to get current transparency index into global/local color table (optionally update value)
+     * @param {(increment?:boolean)=>number} getFrameIndex - function to get current frame index in `GIF.frames` (optionally increment before next cycle)
+     * @param {(replace?:string)=>string} getLastBlock - function to get last block read (optionally replace for next call)
      * @returns {Promise<boolean>} true if EOF was reached
-     * @throws {EvalError}
+     * @throws {EvalError} for the following reasons
+     * - GIF frame size is to large
+     * - plain text extension without global color table
+     * - undefined block found
      */
-    const parseBlock=async(byteStream,gif,getFrameIndex,getTransparencyIndex)=>{
+    const parseBlock=async(byteStream,gif,getFrameIndex,getLastBlock)=>{
         "use strict";
         switch(byteStream.nextByte()){
             case GIFDataHeaders.EndOfFile:return true;
@@ -199,14 +217,14 @@ const decodeGIF=async(gifURL,progressCallback,avgAlpha)=>{
                 if(localColorTableFlag)frame.localColorTable=parseColorTable(byteStream,localColorCount);
                 //~ decode frame image data (GIF-LZW) - image data
                 /**
-                 * __get color from color tables (transparent if index is equal to the transparency index)__
+                 * ## Get color from color tables (transparent if index is equal to the transparency index)
                  * @param {number} index - index into global/local color table
                  * @returns {[number,number,number,number]} RGBA color value
                  */
                 const getColor=index=>{
                     "use strict";
                     const[R,G,B]=(localColorTableFlag?frame.localColorTable:gif.globalColorTable)[index];
-                    return[R,G,B,index===getTransparencyIndex(null)?(avgAlpha?~~((R+G+B)/3):0):255];
+                    return[R,G,B,index===frame.transparentColorIndex?(avgAlpha?~~((R+G+B)/3):0):0xFF];
                 }
                 const image=(()=>{
                     "use strict";
@@ -221,16 +239,16 @@ const decodeGIF=async(gifURL,progressCallback,avgAlpha)=>{
                 const imageData=byteStream.readSubBlocksBin();
                 const clearCode=1<<minCodeSize;
                 /**
-                 * __read `len` bits from `imageData` at `pos`__
-                 * @param {number} pos - bit position in `imageData`
-                 * @param {number} len - bit length to read [1-12 bits]
-                 * @returns {number} `len` bits at `pos`
+                 * ## Read {@linkcode len} bits from {@linkcode imageData} at {@linkcode pos}
+                 * @param {number} pos - bit position in {@linkcode imageData}
+                 * @param {number} len - bit length to read [1 to 12 bits]
+                 * @returns {number} - {@linkcode len} bits at {@linkcode pos}
                  */
                 const readBits=(pos,len)=>{
                     "use strict";
                     const bytePos=pos>>>3,
                         bitPos=pos&7;
-                    return((imageData[bytePos]+(imageData[bytePos+1]<<8)+(imageData[bytePos+2]<<16))&(((1<<len)-1)<<bitPos))>>>bitPos;
+                    return((imageData[bytePos]+(imageData[bytePos+1]<<8)+(imageData[bytePos+2]<<0x10))&(((1<<len)-1)<<bitPos))>>>bitPos;
                 };
                 if(interlacedFlag){
                     for(let code=0,size=minCodeSize+1,pos=0,dic=[[0]],pass=0;pass<4;pass++){
@@ -257,7 +275,8 @@ const decodeGIF=async(gifURL,progressCallback,avgAlpha)=>{
                                     if(InterlaceOffsets[pass]+InterlaceSteps[pass]*lineIndex>=frame.height)break;
                                 }
                             }
-                        progressCallback(byteStream.pos/(byteStream.data.length-1),getFrameIndex(false)+1,image,[frame.left,frame.top],[gif.width,gif.height]);
+                        //@ts-ignore variable is checked for type function in parent scope
+                        progressCallback((byteStream.pos+1)/byteStream.data.length,getFrameIndex(),image,[frame.left,frame.top],[gif.width,gif.height]);
                     }
                     frame.image=image;
                 }else{
@@ -278,14 +297,16 @@ const decodeGIF=async(gifURL,progressCallback,avgAlpha)=>{
                             if(dic.length>=(1<<size)&&size<0xC)size++;
                         }
                     }
-                    progressCallback((byteStream.pos+1)/byteStream.data.length,getFrameIndex(false)+1,frame.image=image,[frame.left,frame.top],[gif.width,gif.height]);
+                    //@ts-ignore variable is checked for type function in parent scope
+                    progressCallback((byteStream.pos+1)/byteStream.data.length,getFrameIndex(),frame.image=image,[frame.left,frame.top],[gif.width,gif.height]);
                 }
+                getLastBlock(`frame [${getFrameIndex()}]`);
             break;
             case GIFDataHeaders.Extension:
                 switch(byteStream.nextByte()){
                     case GIFDataHeaders.GraphicsControlExtension:
                         //~ parse graphics control extension data - applies to the next frame in the byte stream
-                        const frame=gif.frames[getFrameIndex(false)];
+                        const frame=gif.frames[getFrameIndex()];
                         //~ block size (1B) - static 4 - byte size of the block up to (but excluding) the Block Terminator
                         byteStream.pos++;
                         //~ packed byte (1B) >
@@ -296,15 +317,16 @@ const decodeGIF=async(gifURL,progressCallback,avgAlpha)=>{
                         frame.disposalMethod=(packedByte&0x1C)>>>2;
                         //~ > user input flag (1b) - if 1 then continues (rendering) after user input (or delay-time, if given)
                         frame.userInputDelayFlag=(packedByte&2)===2;
-                        //~ > transparent color flag (1b) - idicates that, if set, the following transparency index should be used to ignore each color with this index in the following frame
+                        //~ > transparent color flag (1b) - indicates that, if set, the following transparency index should be used to ignore each color with this index in the following frame
                         const transparencyFlag=(packedByte&1)===1;
                         //~ delay time (2B) - if non-zero specifies the number of 1/100 seconds (here converted to milliseconds) to delay (rendering of) the following frame
                         frame.delayTime=byteStream.nextTwoBytes()*0xA;
-                        //~ transparency index (1B) - color index of transparent color for following frame (only if transparency flag is set)
-                        const transparencyIndex=byteStream.nextByte();
-                        if(transparencyFlag)getTransparencyIndex(transparencyIndex);
+                        //~ transparency index (1B) - color index of transparent color for following frame (only use if transparency flag is set - byte is always present)
+                        if(transparencyFlag)frame.transparentColorIndex=byteStream.nextByte();
+                        else byteStream.pos++;
                         //~ block terminator (1B) - static 0 - marks end of graphics control extension block
                         byteStream.pos++;
+                        getLastBlock(`graphics control extension for frame [${getFrameIndex()}]`);
                     break;
                     case GIFDataHeaders.ApplicationExtension:
                         //~ parse application extension - application-specific information
@@ -318,14 +340,15 @@ const decodeGIF=async(gifURL,progressCallback,avgAlpha)=>{
                         applicationExtension.authenticationCode=byteStream.getString(3);
                         //~ application data blocks - the data of this application extension
                         applicationExtension.data=byteStream.readSubBlocksBin();
+                        getLastBlock(`application extension [${gif.applicationExtensions.length}] ${applicationExtension.identifier}${applicationExtension.authenticationCode}`);
                         gif.applicationExtensions.push(applicationExtension);
                     break;
                     case GIFDataHeaders.CommentExtension:
                         //~ parse comment extension - one or more blocks each stating their size (1B) [1-255]
-                        gif.comments.push([getFrameIndex(false),byteStream.readSubBlocks()]);
+                        gif.comments.push([getLastBlock(`[${byteStream.pos}] after ${getLastBlock()}`),byteStream.readSubBlocks()]);
                     break;
                     case GIFDataHeaders.PlainTextExtension:
-                        //~ parse plain text extension - text to render with the following frame (uses global color table)
+                        //~ parse plain text extension - text to render with the following frame (needs global color table)
                         if(gif.globalColorTable.length===0)throw new EvalError("plain text extension without global color table");
                         //~ block size (1B) - static 12 - byte size of the block up to (but excluding) the plain text data blocks
                         byteStream.pos++;
@@ -349,11 +372,14 @@ const decodeGIF=async(gifURL,progressCallback,avgAlpha)=>{
                         plainTextData.backgroundColor=byteStream.nextByte();
                         //~ plain text data - one or more blocks each stating their size (1B) [1-255]
                         plainTextData.text=byteStream.readSubBlocks();
-                        gif.frames[getFrameIndex(false)].plainTextData=plainTextData;
+                        gif.frames[getFrameIndex()].plainTextData=plainTextData;
+                        getLastBlock(`text extension for frame ${getFrameIndex()}]`);
                     break;
                     default:
-                        //~ skip unknown extensions
-                        byteStream.skipSubBlocks();
+                        const extID=byteStream.data[byteStream.pos-1];
+                        getLastBlock(`unknown extension [${gif.unknownExtensions.length}] #${extID.toString(0x10).toUpperCase().padStart(2,'0')}`);
+                        //~ read unknown extension with unknown length
+                        gif.unknownExtensions.push([extID,byteStream.readSubBlocksBin()]);
                     break;
                 }
             break;
@@ -362,146 +388,136 @@ const decodeGIF=async(gifURL,progressCallback,avgAlpha)=>{
         return false;
     }
     return new Promise((resolve,reject)=>{
-        const ajax=new XMLHttpRequest();
-        ajax.responseType="arraybuffer";
-        ajax.onload=async()=>{
-            if(ajax.status===404)reject("file not found");
-            else if(ajax.status>=200&&ajax.status<300){
-                //? https://www.w3.org/Graphics/GIF/spec-gif89a.txt
-                //? https://www.matthewflickinger.com/lab/whatsinagif/bits_and_bytes.asp
-                //~ load stream and start decoding
-                /**@type {GIF} the output gif object*/
-                const gif={
-                        width:0,
-                        height:0,
-                        totalTime:0,
-                        colorRes:0,
-                        pixelAspectRatio:0,
-                        frames:[],
-                        sortFlag:false,
-                        globalColorTable:[],
-                        backgroundImage:new ImageData(1,1,{colorSpace:"srgb"}),
-                        comments:[],
-                        applicationExtensions:[]
-                    },
-                    byteStream=newByteStream(ajax.response);
-                //~ signature (3B) and version (3B)
-                if(byteStream.getString(6)!=="GIF89a"){reject("not a supported GIF file");return;}
-                //~ width (2B) - in pixels
-                gif.width=byteStream.nextTwoBytes();
-                //~ height (2B) - in pixels
-                gif.height=byteStream.nextTwoBytes();
-                //~ packed byte (1B) >
-                const packedByte=byteStream.nextByte();
-                //~ > global color table flag (1b) - if there will be a global color table
-                const globalColorTableFlag=(packedByte&0x80)===0x80;
-                //~ > color resolution (3b) - bits per color minus 1 [1-8 bits] (256 colors max)
-                gif.colorRes=(packedByte&0x70)>>>4;
-                //~ > sort flag (1b) - if the colors in the global color table are ordered after decreasing importance
-                gif.sortFlag=(packedByte&8)===8;
-                //~ > size of global color table (3b) - number of bits minus 1 [1-8 bits] (256 colors max)
-                const globalColorCount=1<<((packedByte&7)+1);
-                //~ background color index (1B) - when global color table exists this points to the color (index) that should be used for pixels without color data
-                const backgroundColorIndex=byteStream.nextByte();
-                //~ pixel aspect ratio (1B) - if non zero the pixel aspect ratio will be `(value + 15) / 64` from 4:1 to 1:4 in 1/64th increments
-                gif.pixelAspectRatio=byteStream.nextByte();
-                if(gif.pixelAspectRatio!==0)gif.pixelAspectRatio=(gif.pixelAspectRatio+0xF)/0x40;
-                //~ parse global color table if there is one
-                if(globalColorTableFlag)gif.globalColorTable=parseColorTable(byteStream,globalColorCount);
-                //~ set background image / background color or transparent
-                const backgroundImage=(()=>{
-                    "use strict";
-                    try{return new ImageData(gif.width,gif.height,{colorSpace:"srgb"});}
-                    catch(error){
-                        if(error instanceof DOMException&&error.name==="IndexSizeError")return null;
-                        throw error;
+        const xhr=new XMLHttpRequest();
+        xhr.responseType="arraybuffer";
+        xhr.onload=async()=>{
+            if(xhr.status<0xC8||xhr.status>=0x12C){reject(`loading error [${xhr.status}]`);return;}
+            //? https://www.w3.org/Graphics/GIF/spec-gif89a.txt
+            //? https://www.matthewflickinger.com/lab/whatsinagif/bits_and_bytes.asp
+            //~ load stream and start decoding
+            /**@type {GIF} the output gif object*/
+            const gif={
+                    width:0,
+                    height:0,
+                    totalTime:0,
+                    colorRes:0,
+                    pixelAspectRatio:0,
+                    frames:[],
+                    sortFlag:false,
+                    globalColorTable:[],
+                    backgroundColorIndex:null,
+                    comments:[],
+                    applicationExtensions:[],
+                    unknownExtensions:[]
+                },
+                byteStream=newByteStream(xhr.response);
+            //~ signature (3B) and version (3B)
+            if(byteStream.getString(6)!=="GIF89a"){reject("not a supported GIF file");return;}
+            //~ width (2B) - in pixels
+            gif.width=byteStream.nextTwoBytes();
+            //~ height (2B) - in pixels
+            gif.height=byteStream.nextTwoBytes();
+            //~ packed byte (1B) >
+            const packedByte=byteStream.nextByte();
+            //~ > global color table flag (1b) - if there will be a global color table
+            const globalColorTableFlag=(packedByte&0x80)===0x80;
+            //~ > color resolution (3b) - bits per color minus 1 [1-8 bits] (256 colors max)
+            gif.colorRes=(packedByte&0x70)>>>4;
+            //~ > sort flag (1b) - if the colors in the global color table are ordered after decreasing importance
+            gif.sortFlag=(packedByte&8)===8;
+            //~ > size of global color table (3b) - number of bits minus 1 [1-8 bits] (256 colors max)
+            const globalColorCount=1<<((packedByte&7)+1);
+            //~ background color index (1B) - when global color table exists this points to the color (index) that should be used for pixels without color data (byte is always present)
+            if(globalColorTableFlag)gif.backgroundColorIndex=byteStream.nextByte();
+            else byteStream.pos++;
+            //~ pixel aspect ratio (1B) - if non zero the pixel aspect ratio will be `(value + 15) / 64` from 4:1 to 1:4 in 1/64th increments
+            gif.pixelAspectRatio=byteStream.nextByte();
+            if(gif.pixelAspectRatio!==0)gif.pixelAspectRatio=(gif.pixelAspectRatio+0xF)/0x40;
+            //~ parse global color table if there is one
+            if(globalColorTableFlag)gif.globalColorTable=parseColorTable(byteStream,globalColorCount);
+            //~ parse other blocks ↓
+            let frameIndex=-1,
+                incrementFrameIndex=true,
+                lastBlock="parsing global GIF info";
+            /**
+             * ## Get the index of the current frame
+             * @param {boolean} [increment] - if the frame index should increse before the next cycle - default `false`
+             * @returns {number} current frame index
+             */
+            const getframeIndex=increment=>{
+                "use strict";
+                if(increment??false)incrementFrameIndex=true;
+                return frameIndex;
+            };
+            /**
+             * ## Get the last block parsed
+             * @param {string} [replace] - if given replaces the current "last block" value with this
+             * @returns {string} last block parsed
+             */
+            const getLastBlock=replace=>{
+                "use strict";
+                if(replace==null)return lastBlock;
+                return lastBlock=replace;
+            };
+            try{
+                do{
+                    if(incrementFrameIndex){
+                        gif.frames.push({
+                            left:0,
+                            top:0,
+                            width:0,
+                            height:0,
+                            disposalMethod:DisposalMethod.Replace,
+                            transparentColorIndex:null,
+                            image:new ImageData(1,1,{colorSpace:"srgb"}),
+                            plainTextData:null,
+                            userInputDelayFlag:false,
+                            delayTime:0,
+                            sortFlag:false,
+                            localColorTable:[],
+                            reserved:0,
+                            GCreserved:0,
+                        });
+                        frameIndex++;
+                        incrementFrameIndex=false;
                     }
-                })();
-                if(backgroundImage==null){reject("GIF frame size is to large");return;}
-                backgroundImage.data.set(globalColorTableFlag?[...gif.globalColorTable[backgroundColorIndex],255]:[0,0,0,0]);
-                for(let i=4;i<backgroundImage.data.length;i*=2)backgroundImage.data.copyWithin(i,0,i);
-                gif.backgroundImage=backgroundImage;
-                //~ parse other blocks >
-                let frameIndex=-1,
-                    incrementFrameIndex=true,
-                    transparencyIndex=-1;
-                /**
-                 * __get the index of the current frame__
-                 * @param {boolean} increment - if the frame index should increse before the next iterration
-                 * @returns {number} current frame index
-                 */
-                const getframeIndex=(increment)=>{
-                    "use strict";
-                    if(increment)incrementFrameIndex=true;
-                    return frameIndex;
-                };
-                /**
-                 * __get the current transparency index for this frame__
-                 * @param {number?} newValue - if set updates value of transparencyIndex to this
-                 * @returns {number} current transparency index
-                 */
-                const getTransparencyIndex=(newValue)=>{
-                    "use strict";
-                    if(newValue!=null)transparencyIndex=newValue;
-                    return transparencyIndex;
-                };
-                try{
-                    do{
-                        if(incrementFrameIndex){
-                            gif.frames.push({
-                                left:0,
-                                top:0,
-                                width:0,
-                                height:0,
-                                disposalMethod:DisposalMethod.Replace,
-                                image:new ImageData(1,1,{colorSpace:"srgb"}),
-                                plainTextData:null,
-                                userInputDelayFlag:false,
-                                delayTime:0,
-                                sortFlag:false,
-                                localColorTable:[],
-                                reserved:0,
-                                GCreserved:0,
-                            });
-                            frameIndex++;
-                            transparencyIndex=-1;
-                            incrementFrameIndex=false;
-                        }
-                    }while(!await parseBlock(byteStream,gif,getframeIndex,getTransparencyIndex));
-                    gif.frames.length--;
-                    for(const frame of gif.frames){
-                        //~ set total time to infinity if the user input delay flag is set and there is no timeout
-                        if(frame.userInputDelayFlag&&frame.delayTime===0){
-                            gif.totalTime=Infinity;
-                            break;
-                        }
-                        gif.totalTime+=frame.delayTime;
+                }while(!await parseBlock(byteStream,gif,getframeIndex,getLastBlock));
+                gif.frames.length--;
+                for(const frame of gif.frames){
+                    //~ set total time to infinity if the user input delay flag is set and there is no timeout
+                    if(frame.userInputDelayFlag&&frame.delayTime===0){
+                        gif.totalTime=Infinity;
+                        break;
                     }
-                    resolve(gif);
-                    return;
-                }catch(error){
-                    if(error instanceof EvalError){reject(`error while parsing frame ${frameIndex} "${error.message}"`);return;}
-                    throw error;
+                    gif.totalTime+=frame.delayTime;
                 }
-            }else reject("loading error");
+                resolve(gif);
+                return;
+            }catch(error){
+                if(error instanceof EvalError){reject(`error while parsing frame [${frameIndex}] "${error.message}"`);return;}
+                throw error;
+            }
         };
-        ajax.onerror=()=>reject("file error");
-        ajax.onabort=()=>reject("loading aborted");
-        ajax.open('GET',gifURL,true);
-        ajax.send();
+        xhr.onerror=()=>reject("fetch error");
+        xhr.onabort=()=>reject("fetch aborted");
+        xhr.open('GET',gifURL,true);
+        xhr.send();
     });
 };
 /**
- * __extract the animation loop amount from `gif`__
+ * ## Extract the animation loop amount from a {@linkcode GIF}
+ * Generally, for proper looping support, the `NETSCAPE2.0` extension must appear immediately after the global color table of the logical screen descriptor (at the beginning of the GIF file). Still, here, it doesn't matter where it was found.
  * @param {GIF} gif - a parsed GIF object
- * @returns {number} - if `NETSCAPE2.0` is available, the loop amount of the GIF as 16bit number (0 = infinity), otherwise `NaN`
+ * @returns {number} the loop amount of {@linkcode gif} as 16bit number (0 to 65'535 or `Infinity`)
  */
 const getGIFLoopAmount=gif=>{
-    for(const extension of gif.applicationExtensions){
-        if(extension.identifier+extension.authenticationCode!=="NETSCAPE2.0")continue;
-        return extension.data[1]+(extension.data[2]<<8);
-    }
-    return NaN;
+    for(const ext of gif.applicationExtensions)
+        if(ext.authenticationCode==="2.0"&&ext.identifier==="NETSCAPE"){
+            const loop=ext.data[1]+(ext.data[2]<<8);
+            if(loop===0)return Infinity;
+            return loop;
+        }
+    return 0;
 };
 
 //~  _   _ ________  ___ _       _____ _                           _
@@ -514,195 +530,239 @@ const getGIFLoopAmount=gif=>{
 /** HTML elements in DOM */
 const html=Object.freeze({
     /** @type {HTMLElement} DOM root (`<html>`) */
-    root: document.documentElement,
+    root:document.documentElement,
     /** @type {HTMLDivElement} Main container *///@ts-ignore element does exist in DOM
-    box: document.getElementById("box"),
+    box:document.getElementById("box"),
     /** @type {HTMLHeadingElement} Main page heading (element before {@linkcode html.view.view}) *///@ts-ignore element does exist in DOM
-    heading: document.getElementById("gifHeading"),
-    /** GIF view box */
-    view: Object.freeze({
+    heading:document.getElementById("gifHeading"),
+    /** GIF view box (top left of the page) */
+    view:Object.freeze({
         /** @type {HTMLDivElement} View box container *///@ts-ignore element does exist in DOM
-        view: document.getElementById("gifView"),
-        /** @type {HTMLDivElement} container for the {@linkcode html.view.htmlCanvas} controls *///@ts-ignore element does exist in DOM
-        controls: document.getElementById("gifViewButtons"),
-        /** @type {HTMLInputElement} Button to `data-toggle` scale {@linkcode html.view.view} to browser width (on `⤢` off `🗙`) via class `full` *///@ts-ignore element does exist in DOM
-        fullWindow: document.getElementById("fullWindow"),
-        /** @type {HTMLInputElement} Button to `data-toggle` {@linkcode html.view.htmlCanvas} between 0 fit to {@linkcode html.view.view} `🞕` (default) and 1 actual size `🞑` (pan with drag controls `margin-left` & `-top` ("__px") (_offset to max half of canvas size_) and zoom `--scaler` (float)) via class `real` (and update `--canvas-width` ("__px")) *///@ts-ignore element does exist in DOM
-        fitWindow: document.getElementById("fitWindow"),
-        /** @type {HTMLInputElement} Button to `data-toggle` {@linkcode html.view.htmlCanvas} between 0 pixelated `🙾` and 1 smooth `🙼` (default) image rendering via class `pixel` *///@ts-ignore element does exist in DOM
-        imgSmoothing: document.getElementById("imgSmoothing"),
+        view:document.getElementById("gifView"),
         /** @type {HTMLCanvasElement} The main GIF canvas (HTML) *///@ts-ignore element does exist in DOM
-        htmlCanvas: document.getElementById("htmlCanvas"),
+        htmlCanvas:document.getElementById("htmlCanvas"),
+        /** @type {CSSStyleDeclaration} Live CSS style map of {@linkcode html.view.htmlCanvas} *///@ts-ignore element does exist in DOM
+        canvasStyle:window.getComputedStyle(document.getElementById("htmlCanvas")),
         /** @type {CanvasRenderingContext2D} The main GIF canvas (2D context of {@linkcode html.view.htmlCanvas}) *///@ts-ignore element does exist in DOM
-        canvas: document.getElementById("htmlCanvas").getContext("2d",{colorSpace:"srgb"})
+        canvas:document.getElementById("htmlCanvas").getContext("2d",{colorSpace:"srgb"}),
+        /** @type {HTMLDivElement} container for the {@linkcode html.view.htmlCanvas} controls *///@ts-ignore element does exist in DOM
+        controls:document.getElementById("gifViewButtons"),
+        /** @type {HTMLInputElement} Button to `data-toggle` scale {@linkcode html.view.view} to browser width (on `⤢` off `🗙`) via class `full` *///@ts-ignore element does exist in DOM
+        fullWindow:document.getElementById("fullWindow"),
+        /** @type {HTMLInputElement} Button to `data-toggle` {@linkcode html.view.htmlCanvas} between 0 fit to {@linkcode html.view.view} `🞕` (default) and 1 actual size `🞑` (pan with drag controls `margin-left` & `-top` ("__px") (_offset to max half of canvas size_) and zoom `--scaler` (float)) via class `real` (and update `--canvas-width` ("__px")) *///@ts-ignore element does exist in DOM
+        fitWindow:document.getElementById("fitWindow"),
+        /** @type {HTMLInputElement} Button to `data-toggle` {@linkcode html.view.htmlCanvas} between 0 pixelated `🙾` and 1 smooth `🙼` (default) image rendering via class `pixel` *///@ts-ignore element does exist in DOM
+        imgSmoothing:document.getElementById("imgSmoothing")
     }),
-    /** GIF controls (under {@linkcode html.view.view}) */
-    controls: Object.freeze({
-        /** @type {HTMLInputElement} Disabled slider for GIF time progress in milliseconds (uses tickmarks of {@linkcode html.controls.timeTickmarks}) *///@ts-ignore element does exist in DOM
-        timeRange: document.getElementById("timeRange"),
-        /** @type {HTMLSpanElement} Displays current timestamp of GIF playback in milliseconds (next to {@linkcode html.controls.timeRange}) *///@ts-ignore element does exist in DOM
-        time: document.getElementById("time"),
-        /** @type {HTMLDataListElement} List of timestamps (milliseconds) for tickmarks under {@linkcode html.controls.timeRange} (`<option>MS_TIMESTAMP</option>`) *///@ts-ignore element does exist in DOM
-        timeTickmarks: document.getElementById("timeTickmarks"),
+    /** Time and frame sliders (under {@linkcode html.view}) */
+    frameTime:Object.freeze({
+        /** @type {HTMLInputElement} Disabled slider for GIF time progress in milliseconds (uses tickmarks of {@linkcode html.frameTime.timeTickmarks} - in HTML: `█ ms`) *///@ts-ignore element does exist in DOM
+        timeRange:document.getElementById("timeRange"),
+        /** @type {HTMLSpanElement} Displays current timestamp of GIF playback in milliseconds (next to {@linkcode html.frameTime.timeRange}) *///@ts-ignore element does exist in DOM
+        time:document.getElementById("time"),
+        /** @type {HTMLDataListElement} List of timestamps (milliseconds) for tickmarks (under {@linkcode html.frameTime.timeRange} - `<option>MS_TIMESTAMP</option>` starting at `0` - only shows for integer values) *///@ts-ignore element does exist in DOM
+        timeTickmarks:document.getElementById("timeTickmarks"),
         /** @type {HTMLInputElement} Interactible slider for frame selection *///@ts-ignore element does exist in DOM
-        frameRange: document.getElementById("frameRange"),
-        /** @type {HTMLSpanElement} Displays current frame index (next to {@linkcode html.controls.frameRange}) *///@ts-ignore element does exist in DOM
-        frame: document.getElementById("frame"),
-        /** @type {HTMLInputElement} Button to go to the first frame of the GIF (and pause playback) *///@ts-ignore element does exist in DOM
-        seekStart: document.getElementById("seekStart"),
-        /** @type {HTMLInputElement} Button to go to the previous frame of the GIF (and pause playback) *///@ts-ignore element does exist in DOM
-        seekPrevious: document.getElementById("seekPrevious"),
-        /** @type {HTMLInputElement} Button to play GIF in reverse *///@ts-ignore element does exist in DOM
-        reverse: document.getElementById("reverse"),
-        /** @type {HTMLInputElement} Button to pause GIF playback *///@ts-ignore element does exist in DOM
-        pause: document.getElementById("pause"),
-        /** @type {HTMLInputElement} Button to start GIF playback *///@ts-ignore element does exist in DOM
-        play: document.getElementById("play"),
-        /** @type {HTMLInputElement} Button to go to the next frame of the GIF (and pause playback) *///@ts-ignore element does exist in DOM
-        seekNext: document.getElementById("seekNext"),
-        /** @type {HTMLInputElement} Button to go to the last frame of the GIF (and pause playback) *///@ts-ignore element does exist in DOM
-        seekEnd: document.getElementById("seekEnd"),
-        /** @type {HTMLFieldSetElement} Container for user input controls (highlight via class `waiting` when waiting for user input) *///@ts-ignore element does exist in DOM
-        userInputField: document.getElementById("userInputField"),
-        /** @type {HTMLInputElement} Disabled slider to show timeout (milliseconds) for user input delay (use class `infinity` if this frame has no timeout and `none` if this frame does not need user input) *///@ts-ignore element does exist in DOM
-        userInputTimeout: document.getElementById("userInputTimeout"),
-        /** @type {HTMLSpanElement} Shows timeout for user input in milliseconds (see {@linkcode html.controls.userInputTimeout}) *///@ts-ignore element does exist in DOM
-        userInputTimeoutTime: document.getElementById("userInputTimeoutTime"),
-        /** @type {HTMLInputElement} Button to `data-toggle` user input lock (1 ON / 0 OFF (default)) if ON, does not wait and continues playback instantly *///@ts-ignore element does exist in DOM
-        userInputLock: document.getElementById("userInputLock"),
-        /** @type {HTMLInputElement} Button for user input, continues playback when waiting for user input *///@ts-ignore element does exist in DOM
-        userInput: document.getElementById("userInput")
+        frameRange:document.getElementById("frameRange"),
+        /** @type {HTMLSpanElement} Displays current (zero-based) frame index (next to {@linkcode html.frameTime.frameRange}) *///@ts-ignore element does exist in DOM
+        frame:document.getElementById("frame")
     }),
-    /** @type {HTMLDivElement} Main info panel container *///@ts-ignore element does exist in DOM
-    infoPanels: document.getElementById("infoPanels"),
+    /** GIF playback controls (under {@linkcode html.frameTime}) */
+    controls:Object.freeze({
+        /** @type {HTMLDivElement} Container of the control buttons - use this to visualize playback (class `reverse`/`paused`/`playing`) *///@ts-ignore element does exist in DOM
+        container:document.getElementById("playerControls"),
+        /** @type {HTMLInputElement} Button to go to the first frame of the GIF (and pause playback) *///@ts-ignore element does exist in DOM
+        seekStart:document.getElementById("seekStart"),
+        /** @type {HTMLInputElement} Button to go to the previous frame of the GIF (and pause playback) *///@ts-ignore element does exist in DOM
+        seekPrevious:document.getElementById("seekPrevious"),
+        /** @type {HTMLInputElement} Button to play GIF in reverse *///@ts-ignore element does exist in DOM
+        reverse:document.getElementById("reverse"),
+        /** @type {HTMLInputElement} Button to pause GIF playback *///@ts-ignore element does exist in DOM
+        pause:document.getElementById("pause"),
+        /** @type {HTMLInputElement} Button to start GIF playback *///@ts-ignore element does exist in DOM
+        play:document.getElementById("play"),
+        /** @type {HTMLInputElement} Button to go to the next frame of the GIF (and pause playback) *///@ts-ignore element does exist in DOM
+        seekNext:document.getElementById("seekNext"),
+        /** @type {HTMLInputElement} Button to go to the last frame of the GIF (and pause playback) *///@ts-ignore element does exist in DOM
+        seekEnd:document.getElementById("seekEnd")
+    }),
+    /** User input area (under {@linkcode html.controls}) */
+    userInput:Object.freeze({
+        /** @type {HTMLFieldSetElement} Container for user input controls (highlight via class `waiting` for user input and class `infinity` when infinite timeout) *///@ts-ignore element does exist in DOM
+        userInputArea:document.getElementById("userInputArea"),
+        /** @type {HTMLProgressElement} Progress bar to show timeout (milliseconds) for user input delay (remove `value` attribute when infinite timeout and `0` for no timeout - also update `max` accordingly (non-zero value)) *///@ts-ignore element does exist in DOM
+        userInputTimeout:document.getElementById("userInputTimeout"),
+        /** @type {HTMLSpanElement} Shows timeout for user input in milliseconds (see {@linkcode html.userInput.userInputTimeout} - `∞` when infinite timeout and empty for no timeout - in HTML: `█ ms`) *///@ts-ignore element does exist in DOM
+        userInputTimeoutTime:document.getElementById("userInputTimeoutTime"),
+        /** @type {HTMLInputElement} Button for user input, continues playback when waiting for user input *///@ts-ignore element does exist in DOM
+        userInput:document.getElementById("userInput"),
+        /** @type {HTMLInputElement} Button to `data-toggle` user input lock (1 ON / 0 OFF (default)) if ON, does not wait and continues playback instantly *///@ts-ignore element does exist in DOM
+        userInputLock:document.getElementById("userInputLock")
+    }),
+    /** @type {HTMLDivElement} Main info panel container (right side of the page) *///@ts-ignore element does exist in DOM
+    infoPanels:document.getElementById("infoPanels"),
+    /** Collapsable areas in {@linkcode html.infoPanels} */
+    details:Object.freeze({
+        /** @type {HTMLDetailsElement} Collapsable area for the GIF info *///@ts-ignore element does exist in DOM
+        gifInfo:document.getElementById("detailsGIFInfo"),
+        /** @type {HTMLDetailsElement} Collapsable container of {@linkcode html.info.globalColorTable} *///@ts-ignore element does exist in DOM
+        globalColorTable:document.getElementById("detailsGlobalColorTable"),
+        /** @type {HTMLDetailsElement} Collapsable container of {@linkcode html.info.appExtList} *///@ts-ignore element does exist in DOM
+        appExtList:document.getElementById("detailsAppExtList"),
+        /** @type {HTMLDetailsElement} Collapsable container of {@linkcode html.info.commentsList} *///@ts-ignore element does exist in DOM
+        commentsList:document.getElementById("detailsCommentsList"),
+        /** @type {HTMLDetailsElement} Collapsable container of {@linkcode html.info.unExtList} *///@ts-ignore element does exist in DOM
+        unExtList:document.getElementById("detailsUnExtList"),
+        /** @type {HTMLDetailsElement} Collapsable area for the frame view (container of {@linkcode html.frame.view}) *///@ts-ignore element does exist in DOM
+        frameView:document.getElementById("detailsFrameView"),
+        /** @type {HTMLDetailsElement} Collapsable area for the frame info *///@ts-ignore element does exist in DOM
+        frameInfo:document.getElementById("detailsFrameInfo"),
+        /** @type {HTMLDetailsElement} Collapsable container of {@linkcode html.frame.localColorTable} *///@ts-ignore element does exist in DOM
+        localColorTable:document.getElementById("detailsFrameColorTable"),
+        /** @type {HTMLDetailsElement} Collapsable area for the frame text info *///@ts-ignore element does exist in DOM
+        frameText:document.getElementById("detailsFrameTextInfo")
+    }),
+    /** Progressbars for indicating gif decoding progress (does not allow canvas view controls) */
+    loading:Object.freeze({
+        /** @type {HTMLProgressElement} Progress bar over {@linkcode html.view.view} (0 to 1 - class `done` afterwards) *///@ts-ignore element does exist in DOM
+        gif:document.getElementById("gifLoad"),
+        /** @type {HTMLProgressElement} Progress bar over {@linkcode html.frame.view} (0 to 1 - class `done` afterwards) *///@ts-ignore element does exist in DOM
+        frame:document.getElementById("frameLoad")
+    }),
     /** @type {HTMLInputElement} Button that opens the {@linkcode html.import.menu} (at the top of {@linkcode html.infoPanels}) *///@ts-ignore element does exist in DOM
-    open: document.getElementById("open"),
+    open:document.getElementById("open"),
     /** GIF info panel (collapsable) */
-    info: Object.freeze({
+    info:Object.freeze({
         /** @type {HTMLTableCellElement} Shows the name of the GIF file *///@ts-ignore element does exist in DOM
-        fileName: document.getElementById("fileName"),
+        fileName:document.getElementById("fileName"),
         /** @type {HTMLSpanElement} Shows the total width of the GIF (in pixels) *///@ts-ignore element does exist in DOM
-        totalWidth: document.getElementById("totalWidth"),
+        totalWidth:document.getElementById("totalWidth"),
         /** @type {HTMLSpanElement} Shows the total height of the GIF (in pixels) *///@ts-ignore element does exist in DOM
-        totalHeight: document.getElementById("totalHeight"),
+        totalHeight:document.getElementById("totalHeight"),
         /** @type {HTMLTableCellElement} Shows the total number of frames of the GIF *///@ts-ignore element does exist in DOM
-        totalFrames: document.getElementById("totalFrames"),
+        totalFrames:document.getElementById("totalFrames"),
         /** @type {HTMLTableCellElement} Shows the total time of the GIF (in milliseconds) *///@ts-ignore element does exist in DOM
-        totalTime: document.getElementById("totalTime"),
+        totalTime:document.getElementById("totalTime"),
         /** @type {HTMLTableCellElement} Shows the pixel ascpect ratio of the GIF (in format `w:h` ie. `1:1`) *///@ts-ignore element does exist in DOM
-        pixelAspectRatio: document.getElementById("pixelAspectRatio"),
+        pixelAspectRatio:document.getElementById("pixelAspectRatio"),
         /** @type {HTMLTableCellElement} Shows the color resolution of the GIF (in bits) *///@ts-ignore element does exist in DOM
-        colorRes: document.getElementById("colorRes"),
-        /** @type {HTMLDivElement} List of colors in the global color table of the GIF (`<label title="Color index I">[I] <input type="color" disabled></label>` (optionaly with class `background-flag` / `transparent-flag` and addition to title) for each color or `<span>Empty list (see local color tables)</span>`) *///@ts-ignore element does exist in DOM
-        globalColorTable: document.getElementById("globalColorTable"),
-        /** @type {HTMLDivElement} List of GIF application extensions in RAW binary (`<fieldset><legend title="Application-Extension identifier (8 characters) and authentication code (3 characters)"><span>APPLICAT</span> <span>1.0</span></legend><span title="Description">unknown extension</span> <input type="button" title="Click to copy raw binary to clipboard" value="Copy raw binary"></fieldset>` for each app. ext. or `<span>Empty list</span>`) *///@ts-ignore element does exist in DOM
-        appExtList: document.getElementById("appExtList")
+        colorRes:document.getElementById("colorRes"),
+        /** @type {HTMLDivElement} List of colors in the global color table of the GIF (`<label title="Color index I - click to copy hex code">[I] <input type="color"></label>` (optionaly with class `background-flag` / `transparent-flag` and addition to title) for each color or `<span>Empty list (see local color tables)</span>`) *///@ts-ignore element does exist in DOM
+        globalColorTable:document.getElementById("globalColorTable"),
+        /** @type {HTMLDivElement} List of GIF application extensions in RAW binary (`<fieldset><legend title="Application-Extension identifier (8 characters) and authentication code (3 characters)">#I APPLICAT1.0</legend><span title="Description">unknown application extension</span> <input type="button" title="Click to copy raw binary to clipboard" value="Copy raw binary"></fieldset>` for each app. ext. or `<span>Empty list</span>`) *///@ts-ignore element does exist in DOM
+        appExtList:document.getElementById("appExtList"),
+        /** @type {HTMLDivElement} List of comments in the GIF file (`<div title="Comment #I found in GIF file at AREA_FOUND">Comment #I at AREA_FOUND<textarea readonly>COMMENT</textarea></div>` for each frame/comment or `<span>Empty list</span>`) *///@ts-ignore element does exist in DOM
+        commentsList: document.getElementById("commentsList"),
+        /** @type {HTMLDivElement} List of unknown extensions in the GIF file in RAW binary (`<div title="(Unknown) Extension identifier (1 character)"><span>#I W <small>(0x57)</small></span><input type="button" title="Click to copy raw binary to clipboard" value="Copy raw binary"></div>` for each unknown extension or `<span>Empty list</span>`) *///@ts-ignore element does exist in DOM
+        unExtList:document.getElementById("unExtList")
     }),
     /** GIF frame info panel (collapsable) */
-    frame: Object.freeze({
-        /** @type {HTMLElement} Summary of collapsable frame view (element before {@linkcode html.frame.view}) *///@ts-ignore element does exist in DOM
-        viewContainerSummary: document.getElementById("frameViewSummary"),
+    frame:Object.freeze({
         /** @type {HTMLDivElement} Collapsable (frame) view box container *///@ts-ignore element does exist in DOM
-        view: document.getElementById("frameView"),
-        /** @type {HTMLDivElement} container for the {@linkcode html.frame.hmtlCanvas} controls *///@ts-ignore element does exist in DOM
-        controls: document.getElementById("frameViewButtons"),
-        /** @type {HTMLInputElement} Button to `data-toggle` scale {@linkcode html.frame.view} to browser width (on `⤢` off `🗙`) via class `full` *///@ts-ignore element does exist in DOM
-        fullWindow: document.getElementById("frameFullWindow"),
-        /** @type {HTMLInputElement} Button to `data-toggle` {@linkcode html.frame.htmlCanvas} between 0 fit to {@linkcode html.frame.view} `🞕` (default) and 1 actual size `🞑` (pan with drag controls `margin-left` & `-top` ("__px") (_offset to max half of canvas size_) and zoom `--scaler` (float)) via class `real` (and update `--canvas-width` ("__px")) *///@ts-ignore element does exist in DOM
-        fitWindow: document.getElementById("frameFitWindow"),
-        /** @type {HTMLInputElement} Button to `data-toggle` {@linkcode html.frame.htmlCanvas} between 0 pixelated `🙾` and 1 smooth `🙼` (default) image rendering via class `pixel` *///@ts-ignore element does exist in DOM
-        imgSmoothing: document.getElementById("frameImgSmoothing"),
+        view:document.getElementById("frameView"),
         /** @type {HTMLCanvasElement} The frame canvas (HTML) for the current frame *///@ts-ignore element does exist in DOM
-        htmlCanvas: document.getElementById("htmlFrameCanvas"),
+        htmlCanvas:document.getElementById("htmlFrameCanvas"),
+        /** @type {CSSStyleDeclaration} Live CSS style map of {@linkcode html.frame.htmlCanvas} *///@ts-ignore element does exist in DOM
+        canvasStyle:window.getComputedStyle(document.getElementById("htmlFrameCanvas")),
         /** @type {CanvasRenderingContext2D} The frame canvas (2D context of {@linkcode html.frame.htmlCanvas}) for the current frame *///@ts-ignore element does exist in DOM
-        canvas: document.getElementById("htmlFrameCanvas").getContext("2d",{colorSpace:"srgb"}),
+        canvas:document.getElementById("htmlFrameCanvas").getContext("2d",{colorSpace:"srgb"}),
+        /** @type {HTMLDivElement} container for the {@linkcode html.frame.hmtlCanvas} controls *///@ts-ignore element does exist in DOM
+        controls:document.getElementById("frameViewButtons"),
+        /** @type {HTMLInputElement} Button to `data-toggle` scale {@linkcode html.frame.view} to browser width (on `⤢` off `🗙`) via class `full` *///@ts-ignore element does exist in DOM
+        fullWindow:document.getElementById("frameFullWindow"),
+        /** @type {HTMLInputElement} Button to `data-toggle` {@linkcode html.frame.htmlCanvas} between 0 fit to {@linkcode html.frame.view} `🞕` (default) and 1 actual size `🞑` (pan with drag controls `margin-left` & `-top` ("__px") (_offset to max half of canvas size_) and zoom `--scaler` (float)) via class `real` (and update `--canvas-width` ("__px")) *///@ts-ignore element does exist in DOM
+        fitWindow:document.getElementById("frameFitWindow"),
+        /** @type {HTMLInputElement} Button to `data-toggle` {@linkcode html.frame.htmlCanvas} between 0 pixelated `🙾` and 1 smooth `🙼` (default) image rendering via class `pixel` *///@ts-ignore element does exist in DOM
+        imgSmoothing:document.getElementById("frameImgSmoothing"),
         /** @type {HTMLSpanElement} Shows the width of the current frame (in pixels) *///@ts-ignore element does exist in DOM
-        width: document.getElementById("frameWidth"),
+        width:document.getElementById("frameWidth"),
         /** @type {HTMLSpanElement} Shows the height of the current frame (in pixels) *///@ts-ignore element does exist in DOM
-        height: document.getElementById("frameHeight"),
+        height:document.getElementById("frameHeight"),
         /** @type {HTMLSpanElement} Shows the position of the current frame from the left edge of the GIF (in pixels) *///@ts-ignore element does exist in DOM
-        left: document.getElementById("frameLeft"),
+        left:document.getElementById("frameLeft"),
         /** @type {HTMLSpanElement} Shows the position of the current frame from the top edge of the GIF (in pixels) *///@ts-ignore element does exist in DOM
-        top: document.getElementById("frameTop"),
-        /** @type {HTMLSpanElement} Shows the time in milliseconds this frame is displayed for *///@ts-ignore element does exist in DOM
-        time: document.getElementById("frameTime"),
+        top:document.getElementById("frameTop"),
+        /** @type {HTMLTableCellElement} Shows the time in milliseconds this frame is displayed for *///@ts-ignore element does exist in DOM
+        time:document.getElementById("frameTime"),
         /** @type {HTMLInputElement} Disabled checkbox to show if this frame is waiting for user input *///@ts-ignore element does exist in DOM
-        userInputFlag: document.getElementById("frameUserInputFlag"),
+        userInputFlag:document.getElementById("frameUserInputFlag"),
         /** @type {HTMLTableCellElement} Readonly, shows the disposal method of the current frame (index, text, and meaning) *///@ts-ignore element does exist in DOM
-        disposalMethod: document.getElementById("frameDisposalMethod"),
-        /** @type {HTMLTextAreaElement} Readonly, shows comment for the current frame (if found or use class `empty`) *///@ts-ignore element does exist in DOM
-        comment: document.getElementById("frameComment"),
-        /** @type {HTMLDivElement} List of colors in the local color table of the current frame (`<label title="Color index I">[I] <input type="color"></label>` (optionaly with class `background-flag` / `transparent-flag` and addition to title) for each color or `<span>Empty list (see global color table)</span>`) *///@ts-ignore element does exist in DOM
-        localColorTable: document.getElementById("frameColorTable"),
+        disposalMethod:document.getElementById("frameDisposalMethod"),
+        /** @type {HTMLTableCellElement} Reserved field {@linkcode Frame.reserved} (format: `- (0b00)`) *///@ts-ignore element does exist in DOM
+        frameReserved:document.getElementById("frameReserved"),
+        /** @type {HTMLTableCellElement} Reserved field {@linkcode Frame.GCreserved} (format: `- (0b000)`) *///@ts-ignore element does exist in DOM
+        frameGCReserved:document.getElementById("frameGCReserved"),
+        /** @type {HTMLDivElement} List of colors in the local color table of the current frame (`<label title="Color index I - click to copy hex code">[I] <input type="color"></label>` (optionaly with class `background-flag` / `transparent-flag` and addition to title) for each color or `<span>Empty list (see global color table)</span>`) *///@ts-ignore element does exist in DOM
+        localColorTable:document.getElementById("frameColorTable"),
         /**
-         * Text information for this frame
+         * Text information for this frame (only exist if a global color table is present)
          * - characters other than `0x20` to `0xF7` are interpreted as `0x20`
          * - each character is rendered seperatly (in one cell each)
          * - monospace font, size to cell height / width (measure font character w/h aspect and fit it to width if it's smaller)
          * - cells are tiled from tp left, to right, then bottom (fractional cells are skiped)
          * - if grid is filled and there are characters left, ignore them
          */
-        text: Object.freeze({
+        text:Object.freeze({
             /** @type {HTMLDivElement} The text extension container (add class `empty` if current frame doesn't have a text extension) *///@ts-ignore element does exist in DOM
-            area: document.getElementById("frameTextArea"),
+            area:document.getElementById("frameTextArea"),
             /** @type {HTMLTableCellElement} The text to display on top of the current frame *///@ts-ignore element does exist in DOM
-            text: document.getElementById("frameText"),
+            text:document.getElementById("frameText"),
             /** Grid information of this text */
-            grid: Object.freeze({
+            grid:Object.freeze({
                 /** @type {HTMLSpanElement} The width of the text grid in pixels *///@ts-ignore element does exist in DOM
-                width: document.getElementById("frameTextWidth"),
+                width:document.getElementById("frameTextWidth"),
                 /** @type {HTMLSpanElement} The height of the text grid in pixels *///@ts-ignore element does exist in DOM
-                height: document.getElementById("frameTextHeight"),
+                height:document.getElementById("frameTextHeight"),
                 /** @type {HTMLSpanElement} The (top left) position of the text grid from the left edge of the GIF (logical screen) in pixels *///@ts-ignore element does exist in DOM
-                left: document.getElementById("frameTextLeft"),
+                left:document.getElementById("frameTextLeft"),
                 /** @type {HTMLSpanElement} The (top left) position of the text grid from the top edge of the GIF (logical screen) in pixels *///@ts-ignore element does exist in DOM
-                top: document.getElementById("frameTextTop")
+                top:document.getElementById("frameTextTop")
             }),
             /** Cell information of this text */
-            cell: Object.freeze({
+            cell:Object.freeze({
                 /** @type {HTMLSpanElement} The width of each character cell in pixels (should tile the text grid perfectly) *///@ts-ignore element does exist in DOM
-                width: document.getElementById("frameTextCharWidth"),
+                width:document.getElementById("frameTextCharWidth"),
                 /** @type {HTMLSpanElement} The height of each character cell in pixels (should tile the text grid perfectly) *///@ts-ignore element does exist in DOM
-                height: document.getElementById("frameTextCharHeight"),
+                height:document.getElementById("frameTextCharHeight"),
             }),
             /** @type {HTMLInputElement} The foreground color of this text (index into global color table) *///@ts-ignore element does exist in DOM
-            foreground: document.getElementById("frameTextCharForeground"),
+            foreground:document.getElementById("frameTextCharForeground"),
             /** @type {HTMLInputElement} The background color of this text (index into global color table) *///@ts-ignore element does exist in DOM
-            background: document.getElementById("frameTextCharBackground")
+            background:document.getElementById("frameTextCharBackground")
         })
     }),
     /** Import menu */
-    import: Object.freeze({
+    import:Object.freeze({
         /** @type {HTMLDialogElement} The import menu element (use this to open or close dialog box) *///@ts-ignore element does exist in DOM
-        menu: document.getElementById("importMenu"),
+        menu:document.getElementById("importMenu"),
         /** @type {HTMLInputElement} The URL input field (deactivate this if {@linkcode html.import.file} is used) *///@ts-ignore element does exist in DOM
-        url: document.getElementById("importURL"),
+        url:document.getElementById("importURL"),
         /** @type {HTMLInputElement} The file input field (deactivate this if {@linkcode html.import.url} is used) *///@ts-ignore element does exist in DOM
-        file: document.getElementById("importFile"),
+        file:document.getElementById("importFile"),
         /** @type {HTMLImageElement} The IMG preview of the imported GIF *///@ts-ignore element does exist in DOM
-        preview: document.getElementById("importPreview"),
+        preview:document.getElementById("importPreview"),
         /** @type {HTMLParagraphElement} Show warnings, errors, or other notes here *///@ts-ignore element does exist in DOM
-        warn: document.getElementById("importWarn"),
+        warn:document.getElementById("importWarn"),
         /** @type {HTMLInputElement} Button to confirm import, close {@linkcode html.import.menu}, and start decoding *///@ts-ignore element does exist in DOM
-        confirm: document.getElementById("importConfirm"),
+        confirm:document.getElementById("importConfirm"),
         /** @type {HTMLInputElement} Button to abort import and close {@linkcode html.import.menu} *///@ts-ignore element does exist in DOM
-        abort: document.getElementById("importAbort")
+        abort:document.getElementById("importAbort")
     }),
     /** Confirm menu */
-    confirm: Object.freeze({
+    confirm:Object.freeze({
         /** @type {HTMLDialogElement} The confirm menu element (use this to open or close dialog box) *///@ts-ignore element does exist in DOM
-        menu: document.getElementById("confirmMenu"),
+        menu:document.getElementById("confirmMenu"),
         /** @type {HTMLSpanElement} The text to confirm in the {@linkcode confirmMenu} *///@ts-ignore element does exist in DOM
-        text: document.getElementById("confirmText"),
+        text:document.getElementById("confirmText"),
         /** @type {HTMLInputElement} Button to confirm action and close {@linkcode confirmMenu} *///@ts-ignore element does exist in DOM
-        confirm: document.getElementById("confirmConfirm"),
+        confirm:document.getElementById("confirmConfirm"),
         /** @type {HTMLInputElement} Button to abort action and close {@linkcode confirmMenu} *///@ts-ignore element does exist in DOM
-        abort: document.getElementById("confirmAbort")
+        abort:document.getElementById("confirmAbort")
     })
 });
 
-//? if(html.view.canvas==null)throw new Error();
-//? if(html.frame.canvas==null)throw new Error();
+if(html.view.canvas==null)throw new Error("[GIF decoder] Couldn't get GIF canvas 2D context");
+if(html.frame.canvas==null)throw new Error("[GIF decoder] Couldn't get frame canvas 2D context");
 
 //~  _____              __ _                 ______ _       _
 //~ /  __ \            / _(_)                |  _  (_)     | |
@@ -796,13 +856,426 @@ const confirmDialog=Object.seal(new class ConfirmDialog{
 //~                                 __/ |
 //~                                |___/
 
-// TODO see notes in index.html
-(()=>{
+// TODO implement
+
+/**
+ * URL parameters
+ *
+ * - if, during decoding, an error occurs, it will show the import menu and display the error without further decoding/rendering (ignore all parameters, except for collapsible areas)
+ * - if {@linkcode urlParam.import} is given only allow {@linkcode urlParam.url} (paste into URL field and preview GIF) and collapsable areas (ignore all other parameters)
+ *   - When the import menu is open, the GIF is not yet decoded (only a preview is shown)
+ * - if {@linkcode urlParam.gifReal} and {@linkcode urlParam.frameReal} are both `false` ignore {@linkcode urlParam.pos} and {@linkcode urlParam.zoom}
+ * - if {@linkcode urlParam.gifFull} is `true` ignore {@linkcode urlParam.frameFull}
+ * - if {@linkcode urlParam.frameFull} is `true` ignore {@linkcode urlParam.frameView} (always expand {@linkcode html.details.frameView})
+ * - if {@linkcode urlParam.frameView} is `false` ignore {@linkcode urlParam.frameReal} and {@linkcode urlParam.frameSmooth}
+ * - if {@linkcode urlParam.pos} and {@linkcode urlParam.zoom} are given, apply {@linkcode urlParam.pos} before {@linkcode urlParam.zoom}
+ */
+const urlParam=(()=>{
     "use strict";
     const args=new URLSearchParams(window.location.search);
-    let _tmpVal_=null;
-    ((_tmpVal_=args.get("gifURL"))==null?undefined:(_tmpVal_.length>0?decodeURIComponent(_tmpVal_):undefined))??"https://upload.wikimedia.org/wikipedia/commons/a/a2/Wax_fire.gif";
+    let tmpNum=NaN;
+    return Object.freeze({
+        /**
+         * GIF URL to load - default `null` → use the URL of this public domain GIF from Wikimedia:
+         *
+         * [![Wax_fire.gif](https://upload.wikimedia.org/wikipedia/commons/a/a2/Wax_fire.gif)](https://commons.wikimedia.org/wiki/File:Wax_fire.gif "Open file info page on Wikimedia Commons")
+         */
+        url:args.get("url"),
+        /** If the {@linkcode html.details.gifInfo} should be expanded - default `1` (expanded) */
+        gifInfo:(args.get("gifInfo")??"1")!=="0",
+        /** If the {@linkcode html.details.globalColorTable} should be expanded - default `1` (expanded) */
+        globalColorTable:(args.get("globalColorTable")??"1")!=="0",
+        /** If the {@linkcode html.details.appExtList} should be expanded - default `1` (expanded) */
+        appExtList:(args.get("appExtList")??"1")!=="0",
+        /** If the {@linkcode html.details.commentsList} should be expanded - default `1` (expanded) */
+        commentsList:(args.get("commentsList")??"1")!=="0",
+        /** If the {@linkcode html.details.unExtList} should be expanded - default `0` (collapsed) */
+        unExtList:(args.get("unExtList")??"0")!=="0",
+        /** If the {@linkcode html.details.frameView} should be expanded - default `0` (collapsed) */
+        frameView:(args.get("frameView")??"0")!=="0",
+        /** If the {@linkcode html.details.frameInfo} should be expanded - default `0` (collapsed) */
+        frameInfo:(args.get("frameInfo")??"0")!=="0",
+        /** If the {@linkcode html.details.localColorTable} should be expanded - default `1` (expanded) */
+        localColorTable:(args.get("localColorTable")??"1")!=="0",
+        /** If the {@linkcode html.details.frameText} should be expanded - default `0` (collapsed) */
+        frameText:(args.get("frameText")??"0")!=="0",
+        /** If the {@linkcode html.import.menu} should be opened - default `0` (closed) */
+        import:(args.get("import")??"0")!=="0",
+        /** If the GIF should be playing - default `0` (paused) */
+        play:(args.get("play")??"0")!=="0",
+        /** The frame index (zero-based) to start with (if out of bounds use first frame) - default `0` (first frame) */
+        f:Number.isSafeInteger(tmpNum=Number(args.get("f")))&&tmpNum>=0?tmpNum:0,
+        /** If the {@linkcode html.userInput.userInputLock} should be toggled on - default `0` (OFF) */
+        userLock:(args.get("userLock")??"0")!=="0",
+        /** If the {@linkcode html.view.fullWindow} should be toggled on - default `0` (OFF) */
+        gifFull:(args.get("gifFull")??"0")!=="0",
+        /** If the {@linkcode html.view.fitWindow} should be toggled on - default `0` (OFF) */
+        gifReal:(args.get("gifReal")??"0")!=="0",
+        /** If the {@linkcode html.view.imgSmoothing} should be toggled on - default `1` (ON) */
+        gifSmooth:(args.get("gifSmooth")??"1")!=="0",
+        /** If the {@linkcode html.frame.fullWindow} should be toggled on - default `0` (OFF) */
+        frameFull:(args.get("frameFull")??"0")!=="0",
+        /** If the {@linkcode html.frame.fitWindow} should be toggled on - default `0` (OFF) */
+        frameReal:(args.get("frameReal")??"0")!=="0",
+        /** If the {@linkcode html.frame.imgSmoothing} should be toggled on - default `1` (ON) */
+        frameSmooth:(args.get("frameSmooth")??"1")!=="0",
+        /** The position/offset of {@linkcode html.view.htmlCanvas} ([left,top] safe integers) - default `[0,0]` (origin) */
+        pos:Object.freeze(args.get("pos")?.match(/^(0|[1-9][0-9]*),(0|[1-9][0-9]*)$/)?.slice(1,3).map(v=>Number.isSafeInteger(tmpNum=Number(v))?tmpNum:0)??[0,0]),
+        /**
+         * The starting zoom of {@linkcode html.view.htmlCanvas} (safe integer) - default `0` (no zoom)
+         *
+         * Cap to (+-) half of GIF width (floored)
+         */
+        zoom:Number.isSafeInteger(tmpNum=Number(args.get("zoom")))?tmpNum:0
+    });
 })();
+
+//~  _   _ _   _ _ _ _            __                  _   _
+//~ | | | | | (_) (_) |          / _|                | | (_)
+//~ | | | | |_ _| |_| |_ _   _  | |_ _   _ _ __   ___| |_ _  ___  _ __  ___
+//~ | | | | __| | | | __| | | | |  _| | | | '_ \ / __| __| |/ _ \| '_ \/ __|
+//~ | |_| | |_| | | | |_| |_| | | | | |_| | | | | (__| |_| | (_) | | | \__ \
+//~  \___/ \__|_|_|_|\__|\__, | |_|  \__,_|_| |_|\___|\__|_|\___/|_| |_|___/
+//~                       __/ |
+//~                      |___/
+
+/**
+ * ## Checks if the given {@linkcode url} leads to a GIF file
+ * _async function_
+ * @param {string} url - a URL that leads to a GIF file
+ * @returns {Promise<boolean>} `true` if {@linkcode url} has MIME type `image/gif` and `false` otherwise
+ */
+const checkImageURL=async url=>{
+    "use strict";
+    if(url.startsWith("javascript:"))return false;
+    if(url.startsWith("data:")){
+        if(url.startsWith("data:image/gif"))return true;
+        return false;
+    }
+    const res=await fetch(url,{method:"HEAD"}).catch(()=>null);
+    const buff=await res?.blob();
+    return buff?.type?.startsWith("image/gif")??false;
+};
+
+/**
+ * ## Copies own `value` to the clipboard and prevents default behaviour
+ * (_use this for click events on color input fields to copy its hex code without showing the color input dialogue_)
+ * @this {HTMLInputElement} `<input type="color">`
+ * @param {MouseEvent} ev - `click` event
+ */
+const copyHexColorToClipboard=function(ev){
+    "use strict";
+    ev.preventDefault();
+    navigator.clipboard.writeText(this.value).catch(reason=>console.warn("Couldn't copy color %s, reason: %O",this.value,reason));
+}
+
+/**
+ * ## Set canvas offset position (in pixel)
+ * default: recalculate position
+ * @param {CSSStyleDeclaration} canvasStyle - {@linkcode html.view.canvasStyle} or {@linkcode html.frame.canvasStyle} depending on context
+ * @param {number} [left] - new left offset in pixel
+ * @param {number} [top] - new top offset in pixel
+ */
+const setCanvasOffset=(canvasStyle,left,top)=>{
+    "use strict";
+    if(left==null)left=Number.parseInt(html.root.style.getPropertyValue("--offset-view-left"));
+    if(top==null)top=Number.parseInt(html.root.style.getPropertyValue("--offset-view-top"));
+    const width=Number.parseFloat(canvasStyle.width),
+        height=Number.parseFloat(canvasStyle.height);
+    html.root.style.setProperty("--offset-view-left",`${Math.trunc(Math.max(width*-.5,Math.min(width*.5,left)))}px`);
+    html.root.style.setProperty("--offset-view-top",`${Math.trunc(Math.max(height*-.5,Math.min(height*.5,top)))}px`);
+};
+
+/**
+ * Adds `'` as digit seperator every 3 digits (from the right)
+ * @param {number} num - an integer
+ * @param {number} [radix] - numerical base (integer from 2 to 36 inclusive) - default `10`
+ * @returns {string} the formatted number (only uppercase letters if any) - if {@linkcode num} is not an integer or it overflows into scientific notation (only possible with {@linkcode radix} `10`) it does not format the number an returns it as is
+ */
+const formatInt=(num,radix)=>{
+    "use strict";
+    radix??=0xA;
+    let n=num.toString(radix).toUpperCase();
+    if(!Number.isInteger(num)||(radix===0xA&&n.includes('E')))return n;
+    const offset=n.length%3;
+    for(let i=offset===0?3:offset;i<n.length;i+=4)n=`${n.substring(0,i)}'${n.substring(i)}`;
+    return n;
+};
+
+/**
+ * ## Computes the greatest-common-divisor of two whole numbers
+ * @param {number} a - positive safe integer
+ * @param {number} b - positive safe integer
+ * @returns {number} greatest-common-divisor (integer)
+ * @example gcd(45, 100); //=> 5 → (45/5)/(100/5) → 9/20
+ */
+const gcd=(a,b)=>{
+    "use strict";
+    for([a,b]=a<b?[b,a]:[a,b];a%b>0;[a,b]=[b,a%b]);
+    return b;
+}
+
+/**
+ * ## Generate the HTML for {@linkcode html.info.globalColorTable} ({@linkcode GIF.globalColorTable}) and {@linkcode html.frame.localColorTable} ({@linkcode Frame.localColorTable})
+ * @param {[number,number,number][]} colorTable - global or local color table (list of `[R,G,B]`)
+ * @param {number|null} backgroundColorIndex - index of the background color into the global color table (or `null` if not available)
+ * @param {number|null} transparentColorIndex - the transparency index into the local or global color table (or `null` if not available)
+ * @returns {[HTMLSpanElement]|HTMLLabelElement[]} the formatted list or a `<span>` representing an empty list
+ */
+const genHTMLColorGrid=(colorTable,backgroundColorIndex,transparentColorIndex)=>{
+    "use strict";
+    if(colorTable.length===0){
+        const span=document.createElement("span");
+        span.textContent="Empty list (see local color tables)";
+        return[span];
+    }
+    return colorTable.map((color,i)=>{
+        "use strict";
+        const input=document.createElement("input"),
+            label=document.createElement("label");
+        input.type="color";
+        input.value=color.reduce((o,v)=>o+v.toString(0x10).toUpperCase().padStart(2,'0'),"#");
+        input.addEventListener("click",copyHexColorToClipboard,{passive:false});
+        label.title=`Color index ${i} - click to copy hex code`;
+        if(i===backgroundColorIndex){
+            label.classList.add("background-flag");
+            label.title+=" (used as background color)";
+        }
+        if(i===transparentColorIndex){
+            label.classList.add("transparent-flag");
+            label.title+=" (color indicates transparency)";
+        }
+        label.append(`[${i}] `,input);
+        return label;
+    });
+};
+/**
+ * ## Generate the HTML for {@linkcode html.info.appExtList} ({@linkcode GIF.applicationExtensions})
+ * @param {ApplicationExtension[]} appExt - list of {@linkcode ApplicationExtension application extensions}
+ * @returns {[HTMLSpanElement]|HTMLFieldSetElement[]} the formatted list or a `<span>` representing an empty list
+ */
+const genHTMLAppExtList=appExt=>{
+    "use strict";
+    if(appExt.length===0){
+        const span=document.createElement("span");
+        span.textContent="Empty list";
+        return[span];
+    }
+    return appExt.map((ext,i)=>{
+        "use strict";
+        const legend=document.createElement("legend"),
+            spanDesc=document.createElement("span"),
+            input=document.createElement("input"),
+            fieldset=document.createElement("fieldset");
+        legend.title="Application-Extension identifier (8 characters) and authentication code (3 characters)";
+        legend.textContent=`#${i} ${ext.identifier}${ext.authenticationCode}`;
+        spanDesc.title="Description";
+        switch(ext.identifier+ext.authenticationCode){
+            case"NETSCAPE2.0":spanDesc.textContent=`loops the GIF ${(loop=>loop===0?"0 (infinite)":loop.toString(0xA))(ext.data[1]+(ext.data[2]<<8))} times`;break;
+            default:spanDesc.textContent="unknown application extension";break;
+        }
+        input.type="button";
+        input.title="Click to copy raw binary to clipboard";
+        input.value="Copy raw binary";
+        input.addEventListener("click",()=>{
+            "use strict";
+            //// const text=ext.data.reduce((o,v)=>o+v.toString(0x10).toUpperCase().padStart(2,'0'),"0x");
+            const text=ext.data.reduce((o,v)=>o+String.fromCharCode(v),"");
+            navigator.clipboard.writeText(text).catch(reason=>console.warn("Couldn't copy %i Bytes of text, reason: %O",text.length,reason));
+        },{passive:true});
+        fieldset.append(legend,spanDesc," ",input);
+        return fieldset;
+    });
+};
+/**
+ * ## Generate the HTML for {@linkcode html.info.commentsList} ({@linkcode GIF.comments})
+ * @param {[string,string][]} comments - list of comments and were they where found (`[<area found>,<comment>]`)
+ * @returns {[HTMLSpanElement]|HTMLDivElement[]} the formatted list or a `<span>` representing an empty list
+ */
+const genHTMLCommentList=comments=>{
+    "use strict";
+    if(comments.length===0){
+        const span=document.createElement("span");
+        span.textContent="Empty list";
+        return[span];
+    }
+    return comments.map((comment,i)=>{
+        "use strict";
+        const textarea=document.createElement("textarea"),
+            div=document.createElement("div");
+        textarea.readOnly=true;
+        textarea.textContent=comment[1];
+        div.title=`Comment #${i} found in GIF file at ${comment[0]}`;
+        div.append(`#${i} at ${comment[0]}`,textarea);
+        return div;
+    });
+};
+/**
+ * ## Generate the HTML for {@linkcode html.info.unExtList} ({@linkcode GIF.unknownExtensions})
+ * @param {[number,Uint8Array][]} unExt - list of unknown extensions found (`[<identifier>,<raw bytes>]`)
+ * @returns {[HTMLSpanElement]|HTMLDivElement[]} the formatted list or a `<span>` representing an empty list
+ */
+const getHTMLUnExtList=unExt=>{
+    "use strict";
+    if(unExt.length===0){
+        const span=document.createElement("span");
+        span.textContent="Empty list";
+        return[span];
+    }
+    return unExt.map((ext,i)=>{
+        "use strict";
+        const input=document.createElement("input"),
+            small=document.createElement("small"),
+            span=document.createElement("span"),
+            div=document.createElement("div");
+        input.type="button";
+        input.title="Click to copy raw binary to clipboard";
+        input.value="Copy raw binary";
+        input.addEventListener("click",()=>{
+            "use strict";
+            //// const text=ext[1].reduce((o,v)=>o+v.toString(0x10).toUpperCase().padStart(2,'0'),"0x");
+            const text=ext[1].reduce((o,v)=>o+String.fromCharCode(v),"");
+            navigator.clipboard.writeText(text).catch(reason=>console.warn("Couldn't copy %i Bytes of text, reason: %O",text.length,reason));
+        },{passive:true});
+        small.textContent=`(0x${ext[0].toString(0x10).toUpperCase().padStart(2,'0')})`;
+        span.append(`#${i} ${String.fromCharCode(ext[0])} `,small);
+        div.title="(Unknown) Extension identifier (1 character)";
+        div.append(span,input);
+        return div;
+    });
+}
+
+/**
+ * ## Update all values in {@linkcode html.info}
+ * call once when GIF is loaded
+ * @param {GIF} gif - current GIF object
+ * @param {string} fileName - the file name of the current GIF
+ */
+const updateGifInfo=(gif,fileName)=>{
+    html.info.fileName.textContent=fileName;
+    html.info.totalWidth.textContent=String(gif.width);
+    html.info.totalHeight.textContent=String(gif.height);
+    html.info.totalFrames.textContent=String(gif.frames.length);
+    html.info.totalTime.textContent=gif.totalTime===Infinity?"Infinity (waits for user input)":`${gif.totalTime} ms`;
+    if(gif.pixelAspectRatio===0||gif.pixelAspectRatio===1)html.info.pixelAspectRatio.textContent="1:1 (square pixels)";
+    else{
+        const fracGCD=0x40/gcd(gif.pixelAspectRatio*0x40,0x40);
+        html.info.pixelAspectRatio.textContent=`${gif.pixelAspectRatio*fracGCD}:${fracGCD} (${gif.pixelAspectRatio}:1)`;
+    }
+    html.info.colorRes.textContent=`${gif.colorRes} bits`;
+    html.info.globalColorTable.replaceChildren(...genHTMLColorGrid(gif.globalColorTable,gif.backgroundColorIndex,null));
+    html.info.appExtList.replaceChildren(...genHTMLAppExtList(gif.applicationExtensions));
+    html.info.commentsList.replaceChildren(...genHTMLCommentList(gif.comments));
+    html.info.unExtList.replaceChildren(...getHTMLUnExtList(gif.unknownExtensions));
+};
+/**
+ * ## Initializes {@linkcode html.frameTime} with values (0 ms / frame 0)
+ * call once when GIF is loaded
+ * @param {GIF} gif - current GIF object
+ * @returns {number} the sum of all frame delays (not counting infinities)
+ */
+const updateTimeInfoInit=gif=>{
+    "use strict";
+    let timeSum=0;
+    html.frameTime.timeTickmarks.replaceChildren(...gif.frames.map((v,j)=>{
+        const option=document.createElement("option");
+        option.title=`Frame [${j}]`;
+        option.text=String(timeSum);
+        timeSum+=v.delayTime;
+        return option;
+    }));
+    html.frameTime.timeRange.max=String(timeSum);
+    html.frameTime.frameRange.max=String(gif.frames.length-1);
+    return timeSum;
+};
+/**
+ * ## Update all values in {@linkcode html.frame}
+ * call at beginning of each frame
+ * @param {GIF} gif - current GIF object
+ * @param {number} i - current frame index
+ */
+const updateFrameInfo=(gif,i)=>{
+    "use strict";
+    const f=gif.frames[i];
+    html.frame.canvas.putImageData(f.image,f.left,f.top);
+    html.frame.width.textContent=String(f.width);
+    html.frame.height.textContent=String(f.height);
+    html.frame.left.textContent=String(f.left);
+    html.frame.top.textContent=String(f.top);
+    html.frame.time.textContent=`${f.delayTime} ms`;
+    html.frame.userInputFlag.checked=f.userInputDelayFlag;
+    html.frame.disposalMethod.replaceChildren(...(()=>{switch(f.disposalMethod){
+        case 0:return["[0 unspecified]",document.createElement("br"),"replaces entire frame"];
+        case 1:return["[1 do not dispose]",document.createElement("br"),"combine with previous frame"];
+        case 2:return["[2 restore to background]",document.createElement("br"),"combine with background (first frame)"];
+        case 3:return["[3 restore to previous]",document.createElement("br"),"restore to previous undisposed frame state then combine"];
+        case 4:return["[4 undefined]",document.createElement("br"),"(fallback to 0) replaces entire frame"];
+        case 5:return["[5 undefined]",document.createElement("br"),"(fallback to 0) replaces entire frame"];
+        case 6:return["[6 undefined]",document.createElement("br"),"(fallback to 0) replaces entire frame"];
+        case 7:return["[7 undefined]",document.createElement("br"),"(fallback to 0) replaces entire frame"];
+        default:return["ERROR"];
+    }})());
+    html.frame.frameReserved.textContent=`${f.reserved} (0b${f.reserved.toString(2).padStart(2,'0')})`;
+    html.frame.frameGCReserved.textContent=`${f.GCreserved} (0b${f.GCreserved.toString(2).padStart(3,'0')})`;
+    html.frame.localColorTable.replaceChildren(...genHTMLColorGrid(f.localColorTable,null,f.transparentColorIndex));
+    if(!html.frame.text.area.classList.toggle("empty",f.plainTextData==null)){
+        //@ts-ignore `f.plainTextData` can not be `null` here
+        html.frame.text.text.textContent=f.plainTextData.text;
+        //@ts-ignore `f.plainTextData` can not be `null` here
+        html.frame.text.grid.width.textContent=String(f.plainTextData.width);
+        //@ts-ignore `f.plainTextData` can not be `null` here
+        html.frame.text.grid.height.textContent=String(f.plainTextData.height);
+        //@ts-ignore `f.plainTextData` can not be `null` here
+        html.frame.text.grid.left.textContent=String(f.plainTextData.left);
+        //@ts-ignore `f.plainTextData` can not be `null` here
+        html.frame.text.grid.top.textContent=String(f.plainTextData.top);
+        //@ts-ignore `f.plainTextData` can not be `null` here
+        html.frame.text.cell.width.textContent=String(f.plainTextData.charWidth);
+        //@ts-ignore `f.plainTextData` can not be `null` here
+        html.frame.text.cell.height.textContent=String(f.plainTextData.charHeight);
+        //@ts-ignore `f.plainTextData` can not be `null` here
+        html.frame.text.foreground.value=gif.globalColorTable[f.plainTextData.foregroundColor].reduce((o,v)=>o+v.toString(0x10).toUpperCase().padStart(2,'0'),"#");
+        //@ts-ignore `f.plainTextData` can not be `null` here
+        html.frame.text.background.value=gif.globalColorTable[f.plainTextData.backgroundColor].reduce((o,v)=>o+v.toString(0x10).toUpperCase().padStart(2,'0'),"#");
+    }
+};
+/**
+ * ## Update all values of {@linkcode html.frameTime} (except {@linkcode html.frameTime.timeTickmarks}) and {@linkcode html.userInput} (if {@linkcode Frame.userInputDelayFlag} is given and {@linkcode html.userInput.userInputLock} is OFF)
+ * call each frame (before {@linkcode updateTimeInfo})
+ * @param {GIF} gif - current GIF object
+ * @param {number} i - current frame index
+ * @param {number} ft - frame time in milliseconds (time when frame started)
+ * @param {number} t - current time in milliseconds
+ */
+const updateTimeInfoFrame=(gif,i,ft,t)=>{
+    "use strict";
+    html.frameTime.timeRange.value=(html.frameTime.time.textContent=String(t));
+    html.frameTime.frameRange.value=(html.frameTime.frame.textContent=String(i));
+    if(html.userInput.userInputArea.classList.toggle("waiting",html.userInput.userInputLock.dataset.toggle==="0"&&gif.frames[i].userInputDelayFlag)){
+        if(html.userInput.userInputArea.classList.toggle("infinity",gif.frames[i].delayTime===0)){
+            html.userInput.userInputTimeoutTime.textContent="∞";
+            html.userInput.userInputTimeout.removeAttribute("value");
+        }else html.userInput.userInputTimeoutTime.textContent=`-${(html.userInput.userInputTimeout.max=gif.frames[i].delayTime)-(html.userInput.userInputTimeout.value=t-ft)}`;
+    }else{
+        html.userInput.userInputArea.classList.toggle("infinity",false);
+        html.userInput.userInputTimeoutTime.textContent="-";
+        html.userInput.userInputTimeout.value=0;
+    }
+};
+/**
+ * ## Update all values of {@linkcode html.frameTime} (except {@linkcode html.frameTime.timeTickmarks}) and {@linkcode html.userInput}
+ * call for every time step
+ * @param {number} i - current frame index
+ * @param {number} dt - frame delay time in milliseconds
+ * @param {number} ft - frame time in milliseconds (time when frame started)
+ * @param {number} t - current time in milliseconds
+ */
+const updateTimeInfo=(i,dt,ft,t)=>{
+    "use strict";
+    html.frameTime.timeRange.value=(html.frameTime.time.textContent=String(t));
+    html.frameTime.frameRange.value=(html.frameTime.frame.textContent=String(i));
+    if(html.userInput.userInputArea.classList.contains("waiting")&&!html.userInput.userInputArea.classList.contains("infinity"))html.userInput.userInputTimeoutTime.textContent=`-${(html.userInput.userInputTimeout.max=dt)-(html.userInput.userInputTimeout.value=t-ft)}`;
+};
 
 //~  _____      _
 //~ /  ___|    | |
@@ -816,12 +1289,91 @@ const confirmDialog=Object.seal(new class ConfirmDialog{
 html.view.canvas.imageSmoothingEnabled=false;
 html.frame.canvas.imageSmoothingEnabled=false;
 
+html.root.style.setProperty("--offset-view-left","0px");
+html.root.style.setProperty("--offset-view-top","0px");
+
+(async c=>{// TODO remove
+    if(c)return;
+    await Promise.resolve();
+    html.details.frameInfo.toggleAttribute("open");
+    html.info.globalColorTable.replaceChildren(...genHTMLColorGrid([[0,0,0],[0xFF,0,0xFF],[0xFF,0,0],[0,0xFF,0],[0,0,0xFF]],0,1));
+    html.frame.localColorTable.replaceChildren(...genHTMLColorGrid([[0,0,0],[0xFF,0,0xFF],[0xFF,0,0],[0,0xFF,0],[0,0,0xFF]],0,1));
+    html.info.appExtList.replaceChildren(...genHTMLAppExtList([
+        {identifier:"NETSCAPE",authenticationCode:"2.0",data:Uint8Array.from([1,5,0])},
+        {identifier:"-TEST-TE",authenticationCode:"ST-",data:new Uint8Array(1)},
+        {identifier:"-TEST-TE",authenticationCode:"ST-",data:new Uint8Array(1)},
+        {identifier:"-TEST-TE",authenticationCode:"ST-",data:new Uint8Array(1)}
+    ]));
+    html.info.commentsList.replaceChildren(...genHTMLCommentList([
+        ["POSITION","Lorem ipsum dolor sit amet, consectetur adipiscing elit. Nihil sane. Peccata paria. Fortasse id optimum, sed ubi illud: Plus semper voluptatis? Nos quidem Virtutes sic natae sumus, ut tibi serviremus, aliud negotii nihil habemus. Duo Reges: constructio interrete. Saepe ab Aristotele, a Theophrasto mirabiliter est laudata per se ipsa rerum scientia; Haec quo modo conveniant, non sane intellego. Sic, et quidem diligentius saepiusque ista loquemur inter nos agemusque communiter."],
+        ["Lorem ipsum dolor sit amet, consectetur adipiscing elit.","COMMENT"],
+        ["POSITION","COMMENT"],
+        ["POSITION","COMMENT"]
+    ]));
+    html.info.unExtList.replaceChildren(...getHTMLUnExtList([
+        [0x57,new Uint8Array(1)],
+        [0x45,Uint8Array.from("Hello, there!",v=>v.charCodeAt(0))],
+        [0x0A,new Uint8Array(1)],
+        [0x57,new Uint8Array(1)]
+    ]));
+    html.loading.frame.classList.add("done");
+    html.loading.gif.classList.add("done");
+    html.import.menu.showModal();
+    for(const{htmlCanvas:cnv}of [html.view,html.frame]){
+        cnv.width=920;
+        cnv.height=720;
+    };
+    const fn=()=>{
+        "use strict";
+        for(const{htmlCanvas:cnv,canvas:cnx}of [html.view,html.frame]){
+            cnx.fillStyle="#444";
+            cnx.fillRect(0,0,cnv.width,cnv.height);
+            cnx.fillStyle="#888";
+            cnx.fillRect(cnv.width*.5-25,cnv.height*.5-25,50,50);
+            cnx.strokeStyle="black";
+            cnx.beginPath();
+            cnx.moveTo(0,0);
+            cnx.lineTo(cnv.width,cnv.height);
+            cnx.moveTo(0,cnv.height);
+            cnx.lineTo(cnv.width,0);
+            cnx.stroke();
+            cnx.closePath();
+        }
+        requestAnimationFrame(fn);
+    };
+    fn();
+    await new Promise(E=>setTimeout(E,0x10));
+    // html.box.scroll(html.box.scrollWidth-html.box.clientWidth,0);
+    // html.infoPanels.scroll(0,0x300);
+})(false);
+
+/** Global variables (sealed object) */
+const global=Object.seal({
+    url:"",
+    /** @type {GIF} *///@ts-ignore better to throw an error when it's unexpectedly still null than have ?. everywhere
+    gifDecode:null,
+    frameIndex:0,
+    /** @type {OffscreenCanvas} *///@ts-ignore better to throw an error when it's unexpectedly still null than have ?. everywhere
+    lastFullCanvas:null,
+    /** @type {OffscreenCanvasRenderingContext2D} *///@ts-ignore better to throw an error when it's unexpectedly still null than have ?. everywhere
+    lastFullContext:null,
+    lastFullIndex:0,
+    dragging:false,
+    /** if `true` dragging is from {@linkcode html.view.view} and when `false` from {@linkcode html.frame.view} */
+    draggingGIF:true,
+    mouseX:0,
+    mouseY:0,
+    scaler:0
+});
+
 //~  _   _ _                                 _             _
 //~ | | | (_)                               | |           | |
 //~ | | | |_  _____      __   ___ ___  _ __ | |_ _ __ ___ | |___
 //~ | | | | |/ _ \ \ /\ / /  / __/ _ \| '_ \| __| '__/ _ \| / __|
 //~ \ \_/ / |  __/\ V  V /  | (_| (_) | | | | |_| | | (_) | \__ \
 //~  \___/|_|\___| \_/\_/    \___\___/|_| |_|\__|_|  \___/|_|___/
+
+//~ view buttons full-window mode / fit to window (or pan & zoom controls) / img smoothing
 
 html.view.fullWindow.addEventListener("click",()=>{
     "use strict";
@@ -848,7 +1400,7 @@ html.frame.fullWindow.addEventListener("click",()=>{
         html.frame.fullWindow.dataset.toggle="0";
         html.frame.fullWindow.value="⤢";
         html.frame.view.classList.remove("full");
-        html.frame.viewContainerSummary.insertAdjacentElement("afterend",html.frame.view);
+        html.details.frameView.insertAdjacentElement("beforeend",html.frame.view);
     }
 },{passive:true});
 
@@ -909,145 +1461,96 @@ html.frame.imgSmoothing.addEventListener("click",()=>{
     }
 },{passive:true});
 
-(()=>{//~ canvas (syncronised) pan and zoom controls
-    let dragging=false,
-        mouseX=0,
-        mouseY=0,
-        scaler=1;
-    const canvasStyle=window.getComputedStyle(html.view.htmlCanvas),
-        /** @type {(left?:number,top?:number)=>void} set canvas offset position (pixel) - default: recalculate position */
-        setPosition=(left,top)=>{
-            "use strict";
-            if(left==null)left=Number.parseInt(html.root.style.getPropertyValue("--offset-view-left"));
-            if(top==null)top=Number.parseInt(html.root.style.getPropertyValue("--offset-view-top"));
-            const width=Number.parseFloat(canvasStyle.width),
-                height=Number.parseFloat(canvasStyle.height);
-            html.root.style.setProperty("--offset-view-left",`${Math.trunc(Math.max(width*-.5,Math.min(width*.5,left)))}px`);
-            html.root.style.setProperty("--offset-view-top",`${Math.trunc(Math.max(height*-.5,Math.min(height*.5,top)))}px`);
-        };
-    html.root.style.setProperty("--offset-view-left","0px");
-    html.root.style.setProperty("--offset-view-top","0px");
-    //~ reset dragging
-    html.view.view.addEventListener("dblclick",ev=>{
-        "use strict";
-        if((html.view.fitWindow.dataset.toggle??"0")==="0")return;
-        setPosition(0,0);
-        ev.preventDefault();
-    });
-    html.frame.view.addEventListener("dblclick",ev=>{
-        "use strict";
-        if((html.frame.fitWindow.dataset.toggle??"0")==="0")return;
-        setPosition(0,0);
-        ev.preventDefault();
-    });
-    //~ reset zoom
-    html.view.view.addEventListener("mousedown",ev=>{
-        "use strict";
-        if(ev.button!==1||(html.view.fitWindow.dataset.toggle??"0")==="0")return;
-        scaler=1;
-        html.root.style.setProperty("--canvas-scaler","1");
-        setPosition();
-        ev.preventDefault();
-    },{passive:false});
-    html.frame.view.addEventListener("mousedown",ev=>{
-        "use strict";
-        if(ev.button!==1||(html.frame.fitWindow.dataset.toggle??"0")==="0")return;
-        scaler=1;
-        html.root.style.setProperty("--canvas-scaler","1");
-        setPosition();
-        ev.preventDefault();
-    },{passive:false});
-    //~ zoom
-    document.addEventListener("wheel",ev=>{
-        "use strict";
-        if(ev.ctrlKey||!(
-            ((html.view.view===ev.target||html.view.htmlCanvas===ev.target)&&(html.view.fitWindow.dataset.toggle??"0")==="1")
-            ||((html.frame.view===ev.target||html.frame.htmlCanvas===ev.target)&&(html.frame.fitWindow.dataset.toggle??"0")==="1")
-        ))return;
-        const previousWidth=Number.parseFloat(canvasStyle.width),
-            previousHeight=Number.parseFloat(canvasStyle.height);
-        html.root.style.setProperty("--canvas-scaler",String(
-            Math.exp((
-                scaler=Math.max(html.view.htmlCanvas.width*-.5,
-                    Math.min(html.view.htmlCanvas.width*.5,
-                        ev.deltaY*-(ev.shiftKey?.5:ev.altKey?.01:.1)
-                        +scaler
-                    )
-                )
-            )*.01)
-        ));
-        setPosition(
-            (Number.parseFloat(canvasStyle.width)*Number.parseInt(html.root.style.getPropertyValue("--offset-view-left")))/previousWidth,
-            (Number.parseFloat(canvasStyle.height)*Number.parseInt(html.root.style.getPropertyValue("--offset-view-top")))/previousHeight
-        );
-        ev.preventDefault();
-    },{passive:false});
-    //~ dragging
-    document.addEventListener("mousedown",ev=>{
-        "use strict";
-        if(ev.button!==0||!(
-            ((html.view.view===ev.target||html.view.htmlCanvas===ev.target)&&(html.view.fitWindow.dataset.toggle??"0")==="1")
-            ||((html.frame.view===ev.target||html.frame.htmlCanvas===ev.target)&&(html.frame.fitWindow.dataset.toggle??"0")==="1")
-        ))return;
-        mouseX=ev.clientX;
-        mouseY=ev.clientY;
-        dragging=true;
-        document.documentElement.classList.add("grabbing");
-        ev.preventDefault();
-    },{passive:false});
-    document.addEventListener("mousemove",ev=>{
-        "use strict";
-        if(!dragging)return;
-        setPosition(
-            Number.parseInt(html.root.style.getPropertyValue("--offset-view-left"))+(ev.clientX-mouseX),
-            Number.parseInt(html.root.style.getPropertyValue("--offset-view-top"))+(ev.clientY-mouseY)
-        );
-        mouseX=ev.clientX;
-        mouseY=ev.clientY;
-    },{passive:true});
-    document.addEventListener("mouseup",()=>{
-        "use strict";
-        dragging=false;
-        document.documentElement.classList.remove("grabbing");
-    },{passive:true});
-})();
+//~ canvas (syncronised) pan and zoom controls
 
-//~  _   _ _   _ _ _ _            __                  _   _
-//~ | | | | | (_) (_) |          / _|                | | (_)
-//~ | | | | |_ _| |_| |_ _   _  | |_ _   _ _ __   ___| |_ _  ___  _ __  ___
-//~ | | | | __| | | | __| | | | |  _| | | | '_ \ / __| __| |/ _ \| '_ \/ __|
-//~ | |_| | |_| | | | |_| |_| | | | | |_| | | | | (__| |_| | (_) | | | \__ \
-//~  \___/ \__|_|_|_|\__|\__, | |_|  \__,_|_| |_|\___|\__|_|\___/|_| |_|___/
-//~                       __/ |
-//~                      |___/
-
-// TODO utility functions
-
-const loadGifURL=url=>{};
-const loadGifFile=file=>{};
-
-/**
- * ## Copies own `value` to the clipboard and prevents default behaviour
- * (_use this for click events on color input fields to copy its hex code without showing the color input dialogue_)
- * @this {HTMLInputElement} `<input type="color">`
- * @param {MouseEvent} ev - `click` event
- */
-const copyColorValue=function(ev){
+//~ dragging
+document.addEventListener("mousedown",ev=>{
     "use strict";
+    if(ev.button!==0||!(
+        ((ev.target===html.view.view||ev.target===html.view.htmlCanvas)&&(html.view.fitWindow.dataset.toggle??"0")==="1")
+        ||((ev.target===html.frame.view||ev.target===html.frame.htmlCanvas)&&(html.frame.fitWindow.dataset.toggle??"0")==="1")
+    ))return;
+    global.mouseX=ev.clientX;
+    global.mouseY=ev.clientY;
+    global.dragging=true;
+    global.draggingGIF=ev.target===html.view.view||ev.target===html.view.htmlCanvas;
+    document.documentElement.classList.add("grabbing");
     ev.preventDefault();
-    navigator.clipboard.writeText(this.value).then(
-        null,
-        reason=>console.warn("Couldn't copy color %s, reason: %O",this.value,reason)
+},{passive:false});
+document.addEventListener("mousemove",ev=>{
+    "use strict";
+    if(!global.dragging)return;
+    setCanvasOffset(
+        global.draggingGIF?html.view.canvasStyle:html.frame.canvasStyle,
+        Number.parseInt(html.root.style.getPropertyValue("--offset-view-left"))+(ev.clientX-global.mouseX),
+        Number.parseInt(html.root.style.getPropertyValue("--offset-view-top"))+(ev.clientY-global.mouseY)
     );
-}
+    global.mouseX=ev.clientX;
+    global.mouseY=ev.clientY;
+},{passive:true});
+document.addEventListener("mouseup",()=>{
+    "use strict";
+    global.dragging=false;
+    document.documentElement.classList.remove("grabbing");
+},{passive:true});
 
-const genHTMLColorGrid=(colorTable)=>{};
-const genHTMLCommentList=(gif)=>{};
-const genHTMLAppExtList=(gif)=>{};
+//~ reset dragging
+html.view.view.addEventListener("dblclick",ev=>{
+    "use strict";
+    if((html.view.fitWindow.dataset.toggle??"0")==="0")return;
+    setCanvasOffset(html.view.canvasStyle,0,0);
+    ev.preventDefault();
+});
+html.frame.view.addEventListener("dblclick",ev=>{
+    "use strict";
+    if((html.frame.fitWindow.dataset.toggle??"0")==="0")return;
+    setCanvasOffset(html.frame.canvasStyle,0,0);
+    ev.preventDefault();
+});
 
-const updateGifInfo=gif=>{};
-const updateFrameInfo=(gif,i)=>{};
-const updateSliderValues=(gif,i,t)=>{};
+//~ zoom
+document.addEventListener("wheel",ev=>{
+    "use strict";
+    if(ev.ctrlKey||!(
+        ((ev.target===html.view.view||ev.target===html.view.htmlCanvas)&&(html.view.fitWindow.dataset.toggle??"0")==="1")
+        ||((ev.target===html.frame.view||ev.target===html.frame.htmlCanvas)&&(html.frame.fitWindow.dataset.toggle??"0")==="1")
+    ))return;
+    const previousWidth=Number.parseFloat(html.view.canvasStyle.width),
+        previousHeight=Number.parseFloat(html.view.canvasStyle.height);
+    html.root.style.setProperty("--canvas-scaler",String(
+        Math.exp((
+            global.scaler=Math.max(html.view.htmlCanvas.width*-.5,
+                Math.min(html.view.htmlCanvas.width*.5,
+                    global.scaler+(ev.deltaY*-(ev.shiftKey?.5:ev.altKey?.01:.1))
+                )
+            )
+        )*.01)
+    ));
+    setCanvasOffset(
+        (ev.target===html.view.view||ev.target===html.view.htmlCanvas)?html.view.canvasStyle:html.frame.canvasStyle,
+        (Number.parseFloat(html.view.canvasStyle.width)*Number.parseInt(html.root.style.getPropertyValue("--offset-view-left")))/previousWidth,
+        (Number.parseFloat(html.view.canvasStyle.height)*Number.parseInt(html.root.style.getPropertyValue("--offset-view-top")))/previousHeight
+    );
+    ev.preventDefault();
+},{passive:false});
+
+//~ reset zoom
+html.view.view.addEventListener("mousedown",ev=>{
+    "use strict";
+    if(ev.button!==1||(html.view.fitWindow.dataset.toggle??"0")==="0")return;
+    global.scaler=0;
+    html.root.style.setProperty("--canvas-scaler","1");
+    setCanvasOffset(html.view.canvasStyle);
+    ev.preventDefault();
+},{passive:false});
+html.frame.view.addEventListener("mousedown",ev=>{
+    "use strict";
+    if(ev.button!==1||(html.frame.fitWindow.dataset.toggle??"0")==="0")return;
+    global.scaler=0;
+    html.root.style.setProperty("--canvas-scaler","1");
+    setCanvasOffset(html.frame.canvasStyle);
+    ev.preventDefault();
+},{passive:false});
 
 //~  _____                _
 //~ |  ___|              | |
@@ -1056,19 +1559,22 @@ const updateSliderValues=(gif,i,t)=>{};
 //~ | |___\ V /  __/ | | | |_\__ \
 //~ \____/ \_/ \___|_| |_|\__|___/
 
-html.frame.text.foreground.addEventListener("click",copyColorValue,{passive:false});
-html.frame.text.background.addEventListener("click",copyColorValue,{passive:false});
-
-html.controls.userInputLock.addEventListener("click",()=>{
+html.userInput.userInputLock.addEventListener("click",()=>{
     "use strict";
-    if((html.controls.userInputLock.dataset.toggle??"0")==="0"){
-        html.controls.userInputLock.dataset.toggle="1";
-        html.controls.userInput.disabled=true;
+    if((html.userInput.userInputLock.dataset.toggle??"0")==="0"){
+        html.userInput.userInputLock.dataset.toggle="1";
+        html.userInput.userInput.disabled=true;
     }else{
-        html.controls.userInputLock.dataset.toggle="0";
-        html.controls.userInput.disabled=false;
+        html.userInput.userInputLock.dataset.toggle="0";
+        html.userInput.userInput.disabled=false;
     }
 },{passive:true});
+
+html.open.addEventListener("click",()=>html.import.menu.showModal(),{passive:true});
+html.import.abort.addEventListener("click",()=>html.import.menu.close(),{passive:true});
+
+html.frame.text.foreground.addEventListener("click",copyHexColorToClipboard,{passive:false});
+html.frame.text.background.addEventListener("click",copyHexColorToClipboard,{passive:false});
 
 //~  _____ ___________                      _
 //~ |  __ \_   _|  ___|                    | |
@@ -1077,46 +1583,83 @@ html.controls.userInputLock.addEventListener("click",()=>{
 //~ | |_\ \_| |_| |     | | |  __/ | | | (_| |  __/ |
 //~  \____/\___/\_|     |_|  \___|_| |_|\__,_|\___|_|
 
-(()=>{// TODO remove
-    //! importMenu.showModal();
-    for(const{htmlCanvas:cnv}of [html.view,html.frame]){
-        cnv.width=920;
-        cnv.height=720;
-    };
-    const fn=()=>{
-        "use strict";
-        for(const{htmlCanvas:cnv,canvas:cnx}of [html.view,html.frame]){
-            cnx.fillStyle="red";
-            cnx.fillRect(0,0,cnv.width,cnv.height);
-            cnx.fillStyle="blue";
-            cnx.fillRect(cnv.width*.5-25,cnv.height*.5-25,50,50);
-            cnx.strokeStyle="black";
-            cnx.beginPath();
-            cnx.moveTo(0,0);
-            cnx.lineTo(cnv.width,cnv.height);
-            cnx.moveTo(0,cnv.height);
-            cnx.lineTo(cnv.width,0);
-            cnx.stroke();
-            cnx.closePath();
-        }
-        requestAnimationFrame(fn);
-    };
-    fn();
-})();
-
 // TODO use animation frames and calculate timing for gif frames
 // TODO edge-case: abort update-loop if previous and current animation frame timestamp is the same value
 // TODO ~ log animation frame time ? calculate frame ~ loop or last frame
 // TODO use async functions for rendering ~ immediatly call next animation frame while doing work async ~
 
-// console.log(0);
-// (async()=>{
-//     console.log(1);
-//     await Promise.resolve();
-//     console.log(2);
-// })();
-// console.log(3);
-//=> 0 1 3 <EOF> 2
+// TODO ? remove queue
+/** @type {(()=>any)[]} Function queue called when a GIF has finished loading, the first frame has been drawn, and playback is paused (functions get removed after call) */
+const gifLoadQueue=Object.preventExtensions([()=>{
+    "use strict";
+    global.lastFullCanvas=new OffscreenCanvas(global.gifDecode.width,global.gifDecode.height);
+    //@ts-ignore checked inline if this might yield null
+    if((global.lastFullContext=global.lastFullCanvas.getContext("2d"))==null)throw new Error("[GIF decoder] Couldn't get offscreen canvas 2D context");
+    global.lastFullContext.globalCompositeOperation="copy";
+    global.lastFullContext.drawImage(html.view.htmlCanvas,0,0);
+}]);
+
+// TODO ! test edge-cases
+(async()=>{//~ load URL parameters
+    "use strict";
+    html.details.gifInfo.toggleAttribute("open",urlParam.gifInfo);
+    html.details.globalColorTable.toggleAttribute("open",urlParam.globalColorTable);
+    html.details.appExtList.toggleAttribute("open",urlParam.appExtList);
+    html.details.commentsList.toggleAttribute("open",urlParam.commentsList);
+    html.details.frameView.toggleAttribute("open",(!urlParam.import&&!urlParam.gifFull&&urlParam.frameFull)||urlParam.frameView);
+    html.details.frameInfo.toggleAttribute("open",urlParam.frameInfo);
+    html.details.localColorTable.toggleAttribute("open",urlParam.localColorTable);
+    html.details.frameText.toggleAttribute("open",urlParam.frameText);
+    if(urlParam.import){
+        //~ wait for one cycle
+        await Promise.resolve();
+        html.import.menu.showModal();
+        if(urlParam.url!=null){
+            html.import.url.value=urlParam.url;
+            html.import.url.dispatchEvent(new Event("change"));
+        }
+        return;
+    }
+    global.url=urlParam.url??"https://upload.wikimedia.org/wikipedia/commons/a/a2/Wax_fire.gif";
+    global.frameIndex=urlParam.f;
+    if(urlParam.gifReal||((urlParam.frameView||(!urlParam.gifFull&&urlParam.frameFull))&&urlParam.frameReal))gifLoadQueue.push((canvasStyle=>async()=>{
+        "use strict";
+        //~ wait for one cycle
+        // TODO test if one cycle is enouth
+        //? await new Promise(E=>setTimeout(E,0x14));
+        await Promise.resolve();
+        setCanvasOffset(canvasStyle,...urlParam.pos);
+        //~ wait for one cycle
+        await Promise.resolve();
+        const previousWidth=Number.parseFloat(canvasStyle.width),
+        previousHeight=Number.parseFloat(canvasStyle.height);
+        html.root.style.setProperty("--canvas-scaler",String(
+            Math.exp((
+                global.scaler=Math.max(global.gifDecode.width*-.5,
+                    Math.min(global.gifDecode.width*.5,
+                        urlParam.zoom
+                    )
+                )
+            )*.01)
+        ));
+        setCanvasOffset(
+            canvasStyle,
+            (Number.parseFloat(canvasStyle.width)*Number.parseInt(html.root.style.getPropertyValue("--offset-view-left")))/previousWidth,
+            (Number.parseFloat(canvasStyle.height)*Number.parseInt(html.root.style.getPropertyValue("--offset-view-top")))/previousHeight
+        );
+    })(urlParam.gifReal?html.view.canvasStyle:html.frame.canvasStyle));
+    if(urlParam.play)gifLoadQueue.push(()=>html.controls.play.click());
+    //~ wait for one cycle
+    await Promise.resolve();
+    if(urlParam.gifFull)html.view.fullWindow.click();
+    else if(urlParam.frameFull)html.frame.fullWindow.click();
+    if(urlParam.gifReal)html.view.fitWindow.click();
+    if(urlParam.frameReal)html.frame.fitWindow.click();
+    if(!urlParam.gifSmooth)html.view.imgSmoothing.click();
+    if(!urlParam.frameSmooth)html.frame.imgSmoothing.click();
+    if(urlParam.userLock)html.userInput.userInputLock.click();
+})();
+
 
 throw 0;
 // TODO ↓
@@ -1129,43 +1672,7 @@ throw 0;
     ctx.drawImage(await createImageBitmap(img),0,0);
 */
 
-document.body.style.margin="0";
-document.body.style.overflow="hidden";
-
-const canvas=document.createElement("canvas");
-document.body.appendChild(canvas);
-canvas.width=window.innerWidth;
-canvas.height=window.innerHeight;
-canvas.style.backgroundColor="black";
-window.addEventListener("resize",()=>{
-    canvas.width=window.innerWidth;
-    canvas.height=window.innerHeight;
-},{passive:true});
-
-const ctx=canvas.getContext("2d");
-if(ctx==null)throw new Error("couldn't get 2d context of canvas");
-ctx.imageSmoothingQuality="low";
-ctx.imageSmoothingEnabled=false;
-
-const progressBar=document.createElement("progress");
-document.body.appendChild(progressBar);
-progressBar.max=1;
-progressBar.value=0;
-progressBar.style.position="absolute";
-progressBar.style.left="50%";
-progressBar.style.top="50%";
-progressBar.style.transform="translate(-50%,-50%)";
-
 let frameMemoryUsage=0;
-
-/**@type {(num:number)=>string} adds `'` for each 3 digits (from the right) in `num`*/
-const _fNum_=num=>{
-    "use strict";
-    let n=num.toString();
-    const offset=n.length%3;
-    for(let i=offset===0?3:offset;i<n.length;i+=4)n=`${n.substring(0,i)}'${n.substring(i)}`;
-    return n;
-};
 
 const forceClearLastFrame=true,
     alertErrors=true,
@@ -1175,7 +1682,7 @@ decodeGIF(gifURL,async(percentageRead,frameCount,frameUpdate,framePos,gifSize)=>
     progressBar.value=percentageRead;
     ctx.drawImage(await createImageBitmap(frameUpdate),(canvas.width-gifSize[0])*.5+framePos[0],(canvas.height-gifSize[1])*.5+framePos[1]);
     frameMemoryUsage+=frameUpdate.data.length;
-    const text=`frame ${_fNum_(frameCount)} (${_fNum_(frameMemoryUsage)} Bytes)`,
+    const text=`frame ${formatInt(frameCount)} (${formatInt(frameMemoryUsage)} Bytes)`,
         textMet=ctx.measureText(text),
         textpos=[(canvas.width-textMet.width)*.5,canvas.height*.5-(textMet.actualBoundingBoxAscent+textMet.actualBoundingBoxDescent)];
     ctx.strokeStyle="white";

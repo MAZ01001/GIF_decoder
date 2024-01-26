@@ -58,7 +58,7 @@ export const DisposalMethod=Object.freeze({
 /**
  * ## Decodes a GIF into its components for rendering on a canvas
  * @param {string} gifURL - the URL of a GIF file
- * @param {(percentageRead:number,frameIndex:number,frame:ImageData,framePos:[number,number],gifSize:[number,number])=>any} [progressCallback] - Optional callback for showing progress of decoding process (when GIF is interlaced calls after each pass (4x on the same frame))
+ * @param {(percentageRead:number,frameIndex:number,frame:ImageData,framePos:[number,number],gifSize:[number,number])=>any} [progressCallback] - Optional callback for showing progress of decoding process (when GIF is interlaced calls after each pass (4x on the same frame)) - if asynchronous, it waits for it to resolve
  * @param {boolean} [avgAlpha] - if this is `true` then, when encountering a transparent pixel, it uses the average value of the pixels RGB channels to calculate the alpha channels value, otherwise alpha channel is either 0 or 1 - _default `false`_
  * @returns {Promise<GIF>} the GIF with each frame decoded separately - may reject for the following reasons
  * - `fetch error` when trying to fetch the GIF from {@linkcode gifURL}
@@ -268,7 +268,7 @@ export const decodeGIF=async(gifURL,progressCallback,avgAlpha)=>{
                                 }
                             }
                         //@ts-ignore variable is checked for type function in parent scope
-                        progressCallback((byteStream.pos+1)/byteStream.data.length,getFrameIndex(),image,[frame.left,frame.top],[gif.width,gif.height]);
+                        await progressCallback((byteStream.pos+1)/byteStream.data.length,getFrameIndex(),image,[frame.left,frame.top],[gif.width,gif.height]);
                     }
                     frame.image=image;
                 }else{
@@ -290,7 +290,7 @@ export const decodeGIF=async(gifURL,progressCallback,avgAlpha)=>{
                         }
                     }
                     //@ts-ignore variable is checked for type function in parent scope
-                    progressCallback((byteStream.pos+1)/byteStream.data.length,getFrameIndex(),frame.image=image,[frame.left,frame.top],[gif.width,gif.height]);
+                    await progressCallback((byteStream.pos+1)/byteStream.data.length,getFrameIndex(),frame.image=image,[frame.left,frame.top],[gif.width,gif.height]);
                 }
                 getLastBlock(`frame [${getFrameIndex()}]`);
             break;

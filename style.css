@@ -124,12 +124,6 @@ label>progress+span{
 /*~ | | | / _ \ __/ _` | | |/ _ \/ _` | */
 /*~ | |/ /  __/ || (_| | | |  __/ (_| | */
 /*~ |___/ \___|\__\__,_|_|_|\___|\__,_| */
-:root{
-    --offset-view-left: 0px;
-    --offset-view-top: 0px;
-    --canvas-width: 0px;
-    --canvas-scaler: 1.0;
-}
 div#infoPanels,
 fieldset#totalSize,
 fieldset#frameSize,
@@ -275,23 +269,53 @@ div#gifView:has(canvas#htmlCanvas.real),
 div#frameView:has(canvas#htmlFrameCanvas.real){cursor: grab;}
 html.grabbing,
 html.grabbing *{cursor: grabbing !important;}
-progress#gifLoad,
-progress#frameLoad{
+div#gifLoad,
+div#frameLoad{
     position: absolute;
     transform: translate(-50%,-50%);
     top: 50%;
     left: 50%;
     width: 80%;
+    display: flex;
+    flex-direction: column;
+    align-items: safe center;
+    place-content: safe center;
+}
+div#gifLoad.done,
+div#frameLoad.done{
+    visibility: hidden;
+    opacity: 0;
+    transition: opacity 300ms ease-in,
+        visibility 300ms;
+}
+p#gifLoadText,
+p#frameLoadText{
+    margin-block: .5rem;
+    color: #0F0;
+    font: x-large 'consolas',monospace;
+    text-shadow: 0 0 4px #000,
+        1px 1px #000,
+        1px -1px #000,
+        -1px 1px #000,
+        -1px -1px #000;
+}
+progress#gifLoadProgress,
+progress#frameLoadProgress{
+    width: 100%;
     height: 2rem;
     accent-color: #0F0;
 }
-div#gifView:has(progress#gifLoad:not(.done)),
-div#frameView:has(progress#frameLoad:not(.done)),
-div#gifView:has(progress#gifLoad:not(.done))~label[for=frameRange],
-div#gifView:has(progress#gifLoad:not(.done))~div#playerControls{pointer-events: none;}
-progress#gifLoad.done,
-progress#frameLoad.done{visibility: hidden;}
-label[for=timeRange]{grid-area: 3/1/4/2;}
+progress#gifLoadProgress:indeterminate,
+progress#frameLoadProgress:indeterminate{accent-color: #0A0;}
+div#gifView:has(div#gifLoad:not(.done)),
+div#frameView:has(div#frameLoad:not(.done)),
+div#gifView:has(div#gifLoad:not(.done))~label[for=frameRange],
+div#gifView:has(div#gifLoad:not(.done))~div#playerControls,
+div#gifView:has(div#gifLoad:not(.done))~fieldset#userInputArea>input{pointer-events: none;}
+label[for=timeRange]{
+    grid-area: 3/1/4/2;
+    pointer-events: none;
+}
 label[for=frameRange]{grid-area: 4/1/5/2;}
 input#frameRange{accent-color: #0A0;}
 div#playerControls{

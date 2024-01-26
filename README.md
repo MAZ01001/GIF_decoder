@@ -20,15 +20,23 @@ with [URL parameters](#available-url-parameters "scroll down to the Available UR
 
 ## Available URL parameters
 
-URL parameters can be in any order, starting with `?` after the URL and then parameters in the format `NAME=VALUE` with `&` between each parameter (for parameters with `0`/`1`, the `=VALUE` can be omitted for it to be treated as `1`).
+URL parameters can be in any order, starting with `?` after the URL and then parameters in the format `NAME=VALUE` with `&` between each parameter.
+
+>
+> [!NOTE]
+>
+> Values must be [encoded URI components](https://developer.mozilla.org/en-US/docs/Web/JavaScript/Reference/Global_Objects/encodeURIComponent "MDN: JS encodeURIComponent() function").
+>
+> Parameters with values `0`/`1` can omit the `=VALUE` for it to be treated as `1`.
+>
 
 For example `?url=https%3A%2F%2Fexample.com%2Fexample.gif&gifInfo=0&frameInfo` translates to:
 
 | Name        | Decoded value                     |
 | ----------- | --------------------------------- |
-| `url`       | <https://example.com/example.gif> |
-| `gifInfo`   | 0 (collapsed)                     |
-| `frameInfo` | 1 (expanded)                      |
+| `url`       | `https://example.com/example.gif` |
+| `gifInfo`   | `0` (collapsed)                   |
+| `frameInfo` | `1` (expanded)                    |
 
 <details open><summary>Click to toggle table</summary>
 
@@ -38,7 +46,7 @@ For example `?url=https%3A%2F%2Fexample.com%2Fexample.gif&gifInfo=0&frameInfo` t
 | `gifInfo`          | `0` collapsed / `1` expanded                                                     | If the _GIF info_ section should be expanded                                                                     | `1` (expanded)                                                                                                                                                                                                                                            |
 | `globalColorTable` | `0` collapsed / `1` expanded                                                     | If the _Global color table_ section should be expanded                                                           | `1` (expanded)                                                                                                                                                                                                                                            |
 | `appExtList`       | `0` collapsed / `1` expanded                                                     | If the _Application-Extensions_ section should be expanded                                                       | `1` (expanded)                                                                                                                                                                                                                                            |
-| `commentsList`     | `0` collapsed / `1` expanded                                                     | If the _Comments_ section should be expanded                                                                     | `1` (expanded)                                                                                                                                                                                                                                            |
+| `commentsList`     | `0` collapsed / `1` expanded                                                     | If the _Comments_ section should be expanded                                                                     | `0` (collapsed)                                                                                                                                                                                                                                           |
 | `unExtList`        | `0` collapsed / `1` expanded                                                     | If the _Unknown extensions_ section should be expanded                                                           | `0` (collapsed)                                                                                                                                                                                                                                           |
 | `frameView`        | `0` collapsed / `1` expanded                                                     | If the _frame canvas_ section should be expanded                                                                 | `0` (collapsed)                                                                                                                                                                                                                                           |
 | `frameInfo`        | `0` collapsed / `1` expanded                                                     | If the _Frame info_ section should be expanded                                                                   | `0` (collapsed)                                                                                                                                                                                                                                           |
@@ -91,6 +99,7 @@ Decodes a GIF into its components for rendering on a canvas.
 
 1. `gifURL` (`string`) The URL of a GIF file.
 2. `progressCallback` (optional `function`) Optional callback for showing progress of decoding process (when GIF is interlaced calls after each pass (4x on the same frame)).
+   If asynchronous, it waits for it to resolve.
 
    ```typescript
    function(

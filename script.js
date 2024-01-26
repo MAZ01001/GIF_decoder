@@ -66,7 +66,7 @@ const DisposalMethod=Object.freeze({
 /**
  * ## Decodes a GIF into its components for rendering on a canvas
  * @param {string} gifURL - the URL of a GIF file
- * @param {(percentageRead:number,frameIndex:number,frame:ImageData,framePos:[number,number],gifSize:[number,number])=>any} [progressCallback] - Optional callback for showing progress of decoding process (when GIF is interlaced calls after each pass (4x on the same frame))
+ * @param {(percentageRead:number,frameIndex:number,frame:ImageData,framePos:[number,number],gifSize:[number,number])=>any} [progressCallback] - Optional callback for showing progress of decoding process (when GIF is interlaced calls after each pass (4x on the same frame)) - if asynchronous, it waits for it to resolve
  * @param {boolean} [avgAlpha] - if this is `true` then, when encountering a transparent pixel, it uses the average value of the pixels RGB channels to calculate the alpha channels value, otherwise alpha channel is either 0 or 1 - _default `false`_
  * @returns {Promise<GIF>} the GIF with each frame decoded separately - may reject for the following reasons
  * - `fetch error` when trying to fetch the GIF from {@linkcode gifURL}
@@ -276,7 +276,7 @@ const decodeGIF=async(gifURL,progressCallback,avgAlpha)=>{
                                 }
                             }
                         //@ts-ignore variable is checked for type function in parent scope
-                        progressCallback((byteStream.pos+1)/byteStream.data.length,getFrameIndex(),image,[frame.left,frame.top],[gif.width,gif.height]);
+                        await progressCallback((byteStream.pos+1)/byteStream.data.length,getFrameIndex(),image,[frame.left,frame.top],[gif.width,gif.height]);
                     }
                     frame.image=image;
                 }else{
@@ -298,7 +298,7 @@ const decodeGIF=async(gifURL,progressCallback,avgAlpha)=>{
                         }
                     }
                     //@ts-ignore variable is checked for type function in parent scope
-                    progressCallback((byteStream.pos+1)/byteStream.data.length,getFrameIndex(),frame.image=image,[frame.left,frame.top],[gif.width,gif.height]);
+                    await progressCallback((byteStream.pos+1)/byteStream.data.length,getFrameIndex(),frame.image=image,[frame.left,frame.top],[gif.width,gif.height]);
                 }
                 getLastBlock(`frame [${getFrameIndex()}]`);
             break;
@@ -624,10 +624,18 @@ const html=Object.freeze({
     }),
     /** Progressbars for indicating gif decoding progress (does not allow canvas view controls) */
     loading:Object.freeze({
-        /** @type {HTMLProgressElement} Progress bar over {@linkcode html.view.view} (0 to 1 - class `done` afterwards) *///@ts-ignore element does exist in DOM
+        /** @type {HTMLDivElement} Progress container over {@linkcode html.view.view} (of {@linkcode html.loading.gifText} and {@linkcode html.loading.gifProgress}) *///@ts-ignore element does exist in DOM
         gif:document.getElementById("gifLoad"),
-        /** @type {HTMLProgressElement} Progress bar over {@linkcode html.frame.view} (0 to 1 - class `done` afterwards) *///@ts-ignore element does exist in DOM
-        frame:document.getElementById("frameLoad")
+        /** @type {HTMLParagraphElement} Progress text over {@linkcode html.loading.gifProgress} (format: `Frame I | P%` with padding to minimize flickering) *///@ts-ignore element does exist in DOM
+        gifText:document.getElementById("gifLoadText"),
+        /** @type {HTMLProgressElement} Progress bar under {@linkcode html.loading.gifText} (0 to 1 - class `done` afterwards) *///@ts-ignore element does exist in DOM
+        gifProgress:document.getElementById("gifLoadProgress"),
+        /** @type {HTMLDivElement} Progress container over {@linkcode html.frame.view} (of {@linkcode html.loading.frameText} and {@linkcode html.loading.frameProgress}) *///@ts-ignore element does exist in DOM
+        frame:document.getElementById("frameLoad"),
+        /** @type {HTMLParagraphElement} Progress text over {@linkcode html.loading.frameProgress} (format: `Frame I | P%` with padding to minimize flickering) *///@ts-ignore element does exist in DOM
+        frameText:document.getElementById("frameLoadText"),
+        /** @type {HTMLProgressElement} Progress bar under {@linkcode html.loading.frameText} (0 to 1 - class `done` afterwards) *///@ts-ignore element does exist in DOM
+        frameProgress:document.getElementById("frameLoadProgress")
     }),
     /** @type {HTMLInputElement} Button that opens the {@linkcode html.import.menu} (at the top of {@linkcode html.infoPanels}) *///@ts-ignore element does exist in DOM
     open:document.getElementById("open"),
@@ -887,8 +895,8 @@ const urlParam=(()=>{
         globalColorTable:(args.get("globalColorTable")??"1")!=="0",
         /** If the {@linkcode html.details.appExtList} should be expanded - default `1` (expanded) */
         appExtList:(args.get("appExtList")??"1")!=="0",
-        /** If the {@linkcode html.details.commentsList} should be expanded - default `1` (expanded) */
-        commentsList:(args.get("commentsList")??"1")!=="0",
+        /** If the {@linkcode html.details.commentsList} should be expanded - default `0` (collapsed) */
+        commentsList:(args.get("commentsList")??"0")!=="0",
         /** If the {@linkcode html.details.unExtList} should be expanded - default `0` (collapsed) */
         unExtList:(args.get("unExtList")??"0")!=="0",
         /** If the {@linkcode html.details.frameView} should be expanded - default `0` (collapsed) */
@@ -958,6 +966,25 @@ const checkImageURL=async url=>{
 };
 
 /**
+ * ## Imports a GIF automatically and renders the first frame (paused - without showing {@linkcode html.import.menu})
+ * _async function_
+ * @param {string} url - a URL that leads to a GIF file
+ * @returns {Promise<boolean>} `true` if the GIF was successfully loaded and `false` otherwise (shows {@linkcode html.import.menu} for error feedback)
+ */
+const silentImportGIF=async url=>{
+    "use strict";
+    await new Promise(E=>{
+        "use strict";
+        html.import.preview.addEventListener("load",E,{passive:true,once:true});
+        html.import.url.value=url;
+        html.import.url.dispatchEvent(new InputEvent("change"));
+    });
+    if(html.import.confirm.disabled){html.import.menu.showModal();return false;}
+    html.import.confirm.click();
+    return true;
+};
+
+/**
  * ## Copies own `value` to the clipboard and prevents default behaviour
  * (_use this for click events on color input fields to copy its hex code without showing the color input dialogue_)
  * @this {HTMLInputElement} `<input type="color">`
@@ -1018,15 +1045,15 @@ const gcd=(a,b)=>{
 /**
  * ## Generate the HTML for {@linkcode html.info.globalColorTable} ({@linkcode GIF.globalColorTable}) and {@linkcode html.frame.localColorTable} ({@linkcode Frame.localColorTable})
  * @param {[number,number,number][]} colorTable - global or local color table (list of `[R,G,B]`)
- * @param {number|null} backgroundColorIndex - index of the background color into the global color table (or `null` if not available)
- * @param {number|null} transparentColorIndex - the transparency index into the local or global color table (or `null` if not available)
+ * @param {boolean} global - if this is for the global color table (`true`) or the local color table (`false`)
+ * @param {number|null} colorIndex - if {@linkcode global} is `true`, this is the background color index, otherwise the transparency index, into {@linkcode colorTable} (or `null` if not available)
  * @returns {[HTMLSpanElement]|HTMLLabelElement[]} the formatted list or a `<span>` representing an empty list
  */
-const genHTMLColorGrid=(colorTable,backgroundColorIndex,transparentColorIndex)=>{
+const genHTMLColorGrid=(colorTable,global,colorIndex)=>{
     "use strict";
     if(colorTable.length===0){
         const span=document.createElement("span");
-        span.textContent="Empty list (see local color tables)";
+        span.textContent=`Empty list (see ${global?"global":"local"} color table)`;
         return[span];
     }
     return colorTable.map((color,i)=>{
@@ -1037,14 +1064,14 @@ const genHTMLColorGrid=(colorTable,backgroundColorIndex,transparentColorIndex)=>
         input.value=color.reduce((o,v)=>o+v.toString(0x10).toUpperCase().padStart(2,'0'),"#");
         input.addEventListener("click",copyHexColorToClipboard,{passive:false});
         label.title=`Color index ${i} - click to copy hex code`;
-        if(i===backgroundColorIndex){
-            label.classList.add("background-flag");
-            label.title+=" (used as background color)";
-        }
-        if(i===transparentColorIndex){
-            label.classList.add("transparent-flag");
-            label.title+=" (color indicates transparency)";
-        }
+        if(i===colorIndex)
+            if(global){
+                label.classList.add("background-flag");
+                label.title+=" (used as background color)";
+            }else{
+                label.classList.add("transparent-flag");
+                label.title+=" (color indicates transparency)";
+            }
         label.append(`[${i}] `,input);
         return label;
     });
@@ -1163,7 +1190,7 @@ const updateGifInfo=(gif,fileName)=>{
         html.info.pixelAspectRatio.textContent=`${gif.pixelAspectRatio*fracGCD}:${fracGCD} (${gif.pixelAspectRatio}:1)`;
     }
     html.info.colorRes.textContent=`${gif.colorRes} bits`;
-    html.info.globalColorTable.replaceChildren(...genHTMLColorGrid(gif.globalColorTable,gif.backgroundColorIndex,null));
+    html.info.globalColorTable.replaceChildren(...genHTMLColorGrid(gif.globalColorTable,true,gif.backgroundColorIndex));
     html.info.appExtList.replaceChildren(...genHTMLAppExtList(gif.applicationExtensions));
     html.info.commentsList.replaceChildren(...genHTMLCommentList(gif.comments));
     html.info.unExtList.replaceChildren(...getHTMLUnExtList(gif.unknownExtensions));
@@ -1217,7 +1244,7 @@ const updateFrameInfo=(gif,i)=>{
     }})());
     html.frame.frameReserved.textContent=`${f.reserved} (0b${f.reserved.toString(2).padStart(2,'0')})`;
     html.frame.frameGCReserved.textContent=`${f.GCreserved} (0b${f.GCreserved.toString(2).padStart(3,'0')})`;
-    html.frame.localColorTable.replaceChildren(...genHTMLColorGrid(f.localColorTable,null,f.transparentColorIndex));
+    html.frame.localColorTable.replaceChildren(...genHTMLColorGrid(f.localColorTable,false,f.transparentColorIndex));
     if(!html.frame.text.area.classList.toggle("empty",f.plainTextData==null)){
         //@ts-ignore `f.plainTextData` can not be `null` here
         html.frame.text.text.textContent=f.plainTextData.text;
@@ -1291,70 +1318,15 @@ html.frame.canvas.imageSmoothingEnabled=false;
 
 html.root.style.setProperty("--offset-view-left","0px");
 html.root.style.setProperty("--offset-view-top","0px");
-
-(async c=>{// TODO remove
-    if(c)return;
-    await Promise.resolve();
-    html.details.frameInfo.toggleAttribute("open");
-    html.info.globalColorTable.replaceChildren(...genHTMLColorGrid([[0,0,0],[0xFF,0,0xFF],[0xFF,0,0],[0,0xFF,0],[0,0,0xFF]],0,1));
-    html.frame.localColorTable.replaceChildren(...genHTMLColorGrid([[0,0,0],[0xFF,0,0xFF],[0xFF,0,0],[0,0xFF,0],[0,0,0xFF]],0,1));
-    html.info.appExtList.replaceChildren(...genHTMLAppExtList([
-        {identifier:"NETSCAPE",authenticationCode:"2.0",data:Uint8Array.from([1,5,0])},
-        {identifier:"-TEST-TE",authenticationCode:"ST-",data:new Uint8Array(1)},
-        {identifier:"-TEST-TE",authenticationCode:"ST-",data:new Uint8Array(1)},
-        {identifier:"-TEST-TE",authenticationCode:"ST-",data:new Uint8Array(1)}
-    ]));
-    html.info.commentsList.replaceChildren(...genHTMLCommentList([
-        ["POSITION","Lorem ipsum dolor sit amet, consectetur adipiscing elit. Nihil sane. Peccata paria. Fortasse id optimum, sed ubi illud: Plus semper voluptatis? Nos quidem Virtutes sic natae sumus, ut tibi serviremus, aliud negotii nihil habemus. Duo Reges: constructio interrete. Saepe ab Aristotele, a Theophrasto mirabiliter est laudata per se ipsa rerum scientia; Haec quo modo conveniant, non sane intellego. Sic, et quidem diligentius saepiusque ista loquemur inter nos agemusque communiter."],
-        ["Lorem ipsum dolor sit amet, consectetur adipiscing elit.","COMMENT"],
-        ["POSITION","COMMENT"],
-        ["POSITION","COMMENT"]
-    ]));
-    html.info.unExtList.replaceChildren(...getHTMLUnExtList([
-        [0x57,new Uint8Array(1)],
-        [0x45,Uint8Array.from("Hello, there!",v=>v.charCodeAt(0))],
-        [0x0A,new Uint8Array(1)],
-        [0x57,new Uint8Array(1)]
-    ]));
-    html.loading.frame.classList.add("done");
-    html.loading.gif.classList.add("done");
-    html.import.menu.showModal();
-    for(const{htmlCanvas:cnv}of [html.view,html.frame]){
-        cnv.width=920;
-        cnv.height=720;
-    };
-    const fn=()=>{
-        "use strict";
-        for(const{htmlCanvas:cnv,canvas:cnx}of [html.view,html.frame]){
-            cnx.fillStyle="#444";
-            cnx.fillRect(0,0,cnv.width,cnv.height);
-            cnx.fillStyle="#888";
-            cnx.fillRect(cnv.width*.5-25,cnv.height*.5-25,50,50);
-            cnx.strokeStyle="black";
-            cnx.beginPath();
-            cnx.moveTo(0,0);
-            cnx.lineTo(cnv.width,cnv.height);
-            cnx.moveTo(0,cnv.height);
-            cnx.lineTo(cnv.width,0);
-            cnx.stroke();
-            cnx.closePath();
-        }
-        requestAnimationFrame(fn);
-    };
-    fn();
-    await new Promise(E=>setTimeout(E,0x10));
-    // html.box.scroll(html.box.scrollWidth-html.box.clientWidth,0);
-    // html.infoPanels.scroll(0,0x300);
-})(false);
+html.root.style.setProperty("--canvas-width","0px");
+html.root.style.setProperty("--canvas-scaler","1.0");
 
 /** Global variables (sealed object) */
-const global=Object.seal({
-    url:"",
+const global=Object.seal({// TODO ? JSDoc
     /** @type {GIF} *///@ts-ignore better to throw an error when it's unexpectedly still null than have ?. everywhere
     gifDecode:null,
     frameIndex:0,
-    /** @type {OffscreenCanvas} *///@ts-ignore better to throw an error when it's unexpectedly still null than have ?. everywhere
-    lastFullCanvas:null,
+    lastFullCanvas:new OffscreenCanvas(1,1),
     /** @type {OffscreenCanvasRenderingContext2D} *///@ts-ignore better to throw an error when it's unexpectedly still null than have ?. everywhere
     lastFullContext:null,
     lastFullIndex:0,
@@ -1365,6 +1337,8 @@ const global=Object.seal({
     mouseY:0,
     scaler:0
 });
+//@ts-ignore better to throw an error when it's unexpectedly null than have ?. everywhere
+global.lastFullContext=global.lastFullCanvas.getContext("2d");
 
 //~  _   _ _                                 _             _
 //~ | | | (_)                               | |           | |
@@ -1552,12 +1526,142 @@ html.frame.view.addEventListener("mousedown",ev=>{
     ev.preventDefault();
 },{passive:false});
 
-//~  _____                _
-//~ |  ___|              | |
-//~ | |____   _____ _ __ | |_ ___
-//~ |  __\ \ / / _ \ '_ \| __/ __|
-//~ | |___\ V /  __/ | | | |_\__ \
-//~ \____/ \_/ \___|_| |_|\__|___/
+//~  _____                           _                          _
+//~ |_   _|                         | |                        | |
+//~   | | _ __ ___  _ __   ___  _ __| |_    _____   _____ _ __ | |_ ___
+//~   | || '_ ` _ \| '_ \ / _ \| '__| __|  / _ \ \ / / _ \ '_ \| __/ __|
+//~  _| || | | | | | |_) | (_) | |  | |_  |  __/\ V /  __/ | | | |_\__ \
+//~  \___/_| |_| |_| .__/ \___/|_|   \__|  \___| \_/ \___|_| |_|\__|___/
+//~                | |
+//~                |_|
+
+html.open.addEventListener("click",()=>html.import.menu.showModal(),{passive:true});
+
+html.import.abort.addEventListener("click",()=>html.import.menu.close(),{passive:true});
+
+html.import.url.addEventListener("change",async()=>{
+    "use strict";
+    const check=await checkImageURL(html.import.url.value);
+    html.import.file.disabled=check;
+    html.import.warn.textContent=check?"":"Given URL does not lead to a GIF image";
+    html.import.preview.src=check?html.import.url.value:"";
+    html.import.confirm.disabled=!check;
+},{passive:true});
+html.import.file.addEventListener("change",async()=>{
+    "use strict";
+    html.import.url.disabled=false;
+    html.import.preview.src="";
+    html.import.confirm.disabled=true;
+    if(html.import.file.files==null||html.import.file.files.length===0){html.import.warn.textContent="No files selected";return;}
+    if(html.import.file.files.length>1){html.import.warn.textContent="Please only select one file";return;}
+    const version=await html.import.file.files[0].slice(0,6).text().then(null,reason=>{return{reason};}).catch(reason=>{return{reason};});
+    if(typeof version==="object"){html.import.warn.textContent=`Error reading file: ${version.reason}`;return;}
+    if(version!=="GIF89a"){html.import.warn.textContent="Provided file is not a suported GIF file (GIF89a)";return;}
+    html.import.url.disabled=true;
+    html.import.warn.textContent="";
+    html.import.preview.src=URL.createObjectURL(html.import.file.files[0]);
+    html.import.confirm.disabled=false;
+},{passive:true});
+
+html.import.confirm.addEventListener("click",async()=>{
+    "use strict";
+    const fileSrc=html.import.preview.src,
+        fileName=html.import.url.disabled?html.import.file.files?.[0]?.name:html.import.url.value.match(/^[^#?]+?\/(.+?\.gif)(?:[#?]|$)/i)?.[0];
+    html.import.menu.close();
+    if(html.controls.container.classList.value!=="paused")html.controls.pause.click();
+    html.loading.gif.classList.remove("done");
+    html.loading.frame.classList.remove("done");
+    html.loading.gifProgress.removeAttribute("value");
+    html.loading.frameProgress.removeAttribute("value");
+    html.loading.gifText.textContent="Loading...";
+    html.loading.frameText.textContent="Loading...";
+    decodeGIF(fileSrc,async(percentageRead,frameIndex,frame,framePos,gifSize)=>{
+        "use strict";
+        if(frameIndex===0){
+            //~ only on first call
+            if(html.view.fitWindow.dataset.toggle==="1")html.view.fitWindow.click();
+            if(html.frame.fitWindow.dataset.toggle==="1")html.frame.fitWindow.click();
+            html.frame.htmlCanvas.width=(html.view.htmlCanvas.width=gifSize[0]);
+            html.frame.htmlCanvas.height=(html.view.htmlCanvas.height=gifSize[1]);
+            html.view.canvas.clearRect(0,0,html.view.htmlCanvas.width,html.view.htmlCanvas.height);
+            html.frame.canvas.clearRect(0,0,html.frame.htmlCanvas.width,html.frame.htmlCanvas.height);
+        }
+        html.loading.gifProgress.value=(html.loading.frameProgress.value=percentageRead);
+        html.loading.gifText.textContent=(html.loading.frameText.textContent=`Frame ${String(frameIndex+1).padStart(2,'0')} | ${(percentageRead*0x64).toFixed(2).padStart(5,'0')}%`);
+        html.view.canvas.clearRect(0,0,html.view.htmlCanvas.width,html.view.htmlCanvas.height);
+        html.view.canvas.putImageData(frame,framePos[0],framePos[1]);
+        if(html.details.frameView.open){
+            html.frame.canvas.clearRect(0,0,html.frame.htmlCanvas.width,html.frame.htmlCanvas.height);
+            html.frame.canvas.putImageData(frame,framePos[0],framePos[1]);
+        }
+        //~ wait for one cycle
+        await new Promise(E=>setTimeout(E,0));
+    }).then(gif=>{
+        "use strict";
+        global.gifDecode=gif;
+        global.lastFullCanvas.width=gif.width;
+        global.lastFullCanvas.height=gif.height;
+        html.loading.gif.classList.add("done");
+        html.loading.frame.classList.add("done");
+        updateGifInfo(gif,fileName??"");
+        updateTimeInfoInit(gif);
+        updateFrameInfo(gif,0);
+        updateTimeInfoFrame(gif,0,0,0);
+        //~ render first frame to every canvas
+        html.view.canvas.clearRect(0,0,html.view.htmlCanvas.width,html.view.htmlCanvas.height);
+        html.view.canvas.putImageData(gif.frames[0].image,gif.frames[0].left,gif.frames[0].top);
+        global.lastFullContext.clearRect(0,0,global.lastFullCanvas.width,global.lastFullCanvas.height);
+        global.lastFullContext.drawImage(html.view.htmlCanvas,0,0);
+        html.frame.canvas.clearRect(0,0,html.frame.htmlCanvas.width,html.frame.htmlCanvas.height);
+        html.frame.canvas.putImageData(gif.frames[0].image,gif.frames[0].left,gif.frames[0].top);
+    },reason=>{
+        "use strict";
+        html.import.warn.textContent=reason;
+        html.import.menu.showModal();
+        console.error("Error importing GIF: %s",reason);
+    });
+},{passive:true});
+
+//~ ______ _             _                _                      _             _
+//~ | ___ \ |           | |              | |                    | |           | |
+//~ | |_/ / | __ _ _   _| |__   __ _  ___| | __   ___ ___  _ __ | |_ _ __ ___ | |___
+//~ |  __/| |/ _` | | | | '_ \ / _` |/ __| |/ /  / __/ _ \| '_ \| __| '__/ _ \| / __|
+//~ | |   | | (_| | |_| | |_) | (_| | (__|   <  | (_| (_) | | | | |_| | | (_) | \__ \
+//~ \_|   |_|\__,_|\__, |_.__/ \__,_|\___|_|\_\  \___\___/|_| |_|\__|_|  \___/|_|___/
+//~                 __/ |
+//~                |___/
+
+html.controls.seekStart.addEventListener("click",()=>{
+    "use strict";
+    // TODO
+},{passive:true});
+html.controls.seekEnd.addEventListener("click",()=>{
+    "use strict";
+    // TODO
+},{passive:true});
+
+html.controls.seekNext.addEventListener("click",()=>{
+    "use strict";
+    // TODO
+},{passive:true});
+html.controls.seekPrevious.addEventListener("click",()=>{
+    "use strict";
+    // TODO
+},{passive:true});
+
+html.controls.pause.addEventListener("click",()=>{
+    "use strict";
+    // TODO
+},{passive:true});
+
+html.controls.play.addEventListener("click",()=>{
+    "use strict";
+    // TODO
+},{passive:true});
+html.controls.reverse.addEventListener("click",()=>{
+    "use strict";
+    // TODO
+},{passive:true});
 
 html.userInput.userInputLock.addEventListener("click",()=>{
     "use strict";
@@ -1570,8 +1674,12 @@ html.userInput.userInputLock.addEventListener("click",()=>{
     }
 },{passive:true});
 
-html.open.addEventListener("click",()=>html.import.menu.showModal(),{passive:true});
-html.import.abort.addEventListener("click",()=>html.import.menu.close(),{passive:true});
+//~ ___  ____                                 _
+//~ |  \/  (_)                               | |
+//~ | .  . |_ ___  ___    _____   _____ _ __ | |_ ___
+//~ | |\/| | / __|/ __|  / _ \ \ / / _ \ '_ \| __/ __|
+//~ | |  | | \__ \ (__  |  __/\ V /  __/ | | | |_\__ \
+//~ \_|  |_/_|___/\___|  \___| \_/ \___|_| |_|\__|___/
 
 html.frame.text.foreground.addEventListener("click",copyHexColorToClipboard,{passive:false});
 html.frame.text.background.addEventListener("click",copyHexColorToClipboard,{passive:false});
@@ -1582,6 +1690,16 @@ html.frame.text.background.addEventListener("click",copyHexColorToClipboard,{pas
 //~ | | __  | | |  _|   | '__/ _ \ '_ \ / _` |/ _ \ '__|
 //~ | |_\ \_| |_| |     | | |  __/ | | | (_| |  __/ |
 //~  \____/\___/\_|     |_|  \___|_| |_|\__,_|\___|_|
+
+(async c=>{// TODO remove
+    "use strict";
+    if(c)return;
+    await new Promise(E=>setTimeout(E,0));
+    html.details.frameInfo.toggleAttribute("open");
+    await silentImportGIF("Wax_fire.gif");
+})(false);
+
+//! use `html.import.warn` for errors while decoding (see edge-cases of `urlParam`)
 
 // TODO use animation frames and calculate timing for gif frames
 // TODO edge-case: abort update-loop if previous and current animation frame timestamp is the same value
@@ -1612,7 +1730,7 @@ const gifLoadQueue=Object.preventExtensions([()=>{
     html.details.frameText.toggleAttribute("open",urlParam.frameText);
     if(urlParam.import){
         //~ wait for one cycle
-        await Promise.resolve();
+        await new Promise(E=>setTimeout(E,0));
         html.import.menu.showModal();
         if(urlParam.url!=null){
             html.import.url.value=urlParam.url;
@@ -1620,17 +1738,16 @@ const gifLoadQueue=Object.preventExtensions([()=>{
         }
         return;
     }
-    global.url=urlParam.url??"https://upload.wikimedia.org/wikipedia/commons/a/a2/Wax_fire.gif";
+    // global.url=urlParam.url??"https://upload.wikimedia.org/wikipedia/commons/a/a2/Wax_fire.gif";
     global.frameIndex=urlParam.f;
     if(urlParam.gifReal||((urlParam.frameView||(!urlParam.gifFull&&urlParam.frameFull))&&urlParam.frameReal))gifLoadQueue.push((canvasStyle=>async()=>{
         "use strict";
         //~ wait for one cycle
-        // TODO test if one cycle is enouth
-        //? await new Promise(E=>setTimeout(E,0x14));
-        await Promise.resolve();
+        await new Promise(E=>setTimeout(E,0));
+        // TODO ↑ test if one cycle is enouth
         setCanvasOffset(canvasStyle,...urlParam.pos);
         //~ wait for one cycle
-        await Promise.resolve();
+        await new Promise(E=>setTimeout(E,0));
         const previousWidth=Number.parseFloat(canvasStyle.width),
         previousHeight=Number.parseFloat(canvasStyle.height);
         html.root.style.setProperty("--canvas-scaler",String(
@@ -1650,7 +1767,7 @@ const gifLoadQueue=Object.preventExtensions([()=>{
     })(urlParam.gifReal?html.view.canvasStyle:html.frame.canvasStyle));
     if(urlParam.play)gifLoadQueue.push(()=>html.controls.play.click());
     //~ wait for one cycle
-    await Promise.resolve();
+    await new Promise(E=>setTimeout(E,0));
     if(urlParam.gifFull)html.view.fullWindow.click();
     else if(urlParam.frameFull)html.frame.fullWindow.click();
     if(urlParam.gifReal)html.view.fitWindow.click();

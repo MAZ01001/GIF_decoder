@@ -48,7 +48,13 @@
             ? add [byte position] to title ~ comment, application/unkown extension, and global/local color table
             ! frame slider "input" event pauses playback (maybe needs mousedown event for pause and input/change for interaction ~ frame selection (update frame within loop so max 60fps no matter how fast user inputs on the slider))
             ~ frames with `0` delay/timeout count nothing to the time total
-            ! format reserved fields as HEX number padded to full length
+            ! new canvas button to change canvas background/-color
+            !>> dialog menu with some options and a live preview
+            !>> pause playback and use screenshoot of canvas as preview (slider for screenshoot opacity | image above inputs)
+            !>> color input for background color
+            !>> checkbox to toggle checker texture and enable checker color (second color input)
+            !>> number input for checker size (~ 1/10 rem)
+            ? add `avgAlpha` (`decodeGIF`) to `urlParam`
         -->
         <div id="gifView" title="GIF render canvas">
             <canvas id="htmlCanvas">Your browser does not support the HTML canvas element</canvas>
@@ -57,12 +63,15 @@
                 <input type="button" id="fitWindow" data-toggle="0" title="Toggle between fit to window (🞕) and actual size (🞑)" value="🞕">
                 <input type="button" id="imgSmoothing" data-toggle="1" title="Toggle between pixelated (🙾) and smooth (🙼) image rendering" value="🙼">
             </div>
-            <progress id="gifLoad"></progress>
+            <div id="gifLoad">
+                <p id="gifLoadText">Loading...</p>
+                <progress id="gifLoadProgress"></progress>
+            </div>
         </div>
-        <label for="timeRange" title="Current timestamp (with frame timestamps in tickmarks below)">Time: <input type="range" id="timeRange" value="0" max="10" list="timeTickmarks" aria-disabled="true"> <span id="time">0</span> ms</label>
+        <label for="timeRange" title="Current timestamp (with frame timestamps in tickmarks below)">Time: <input type="range" id="timeRange" list="timeTickmarks" aria-disabled="true"> <span id="time">-</span> ms</label>
         <datalist id="timeTickmarks"></datalist>
-        <label for="frameRange" title="Current frame index (zero-based)">Frame: <input type="range" id="frameRange" step="1" value="2" max="8"> <span id="frame">2</span></label>
-        <div id="playerControls">
+        <label for="frameRange" title="Current frame index (zero-based)">Frame: <input type="range" id="frameRange" step="1"> <span id="frame">-</span></label>
+        <div id="playerControls" class="paused">
             <input type="button" id="seekStart" value="⏮" title="first frame (paused)">
             <input type="button" id="seekPrevious" value="&LeftArrowBar;" title="previous frame (paused)">
             <input type="button" id="reverse" value="⏴" title="reverse play">
@@ -101,7 +110,7 @@
                             </details>
                         </fieldset>
                         <fieldset><legend title="Comments in the GIF file and the frame index of where they were found">Comments</legend>
-                            <details open id="detailsCommentsList"><summary>Click to toggle contents</summary>
+                            <details id="detailsCommentsList"><summary>Click to toggle contents</summary>
                                 <div id="commentsList"><span>Loading...</span></div>
                             </details>
                         </fieldset>
@@ -122,7 +131,10 @@
                             <input type="button" id="frameFitWindow" data-toggle="0" title="Toggle between fit to window (🞕) and actual size (🞑)" value="🞕">
                             <input type="button" id="frameImgSmoothing" data-toggle="1" title="Toggle between pixelated (🙾) and smooth (🙼) image rendering" value="🙼">
                         </div>
-                        <progress id="frameLoad"></progress>
+                        <div id="frameLoad">
+                            <p id="frameLoadText">Loading...</p>
+                            <progress id="frameLoadProgress"></progress>
+                        </div>
                     </div>
                 </details>
                 <details id="detailsFrameInfo"><summary>Click to toggle contents</summary>

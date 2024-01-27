@@ -61,14 +61,15 @@
             <div id="gifViewButtons">
                 <input type="button" id="fullWindow" data-toggle="0" title="Toggle canvas fullscreen window" value="⤢">
                 <input type="button" id="fitWindow" data-toggle="0" title="Toggle between fit to window (🞕) and actual size (🞑)" value="🞕">
-                <input type="button" id="imgSmoothing" data-toggle="1" title="Toggle between pixelated (🙾) and smooth (🙼) image rendering" value="🙼">
+                <input type="button" id="imgSmoothing" data-toggle="0" title="Toggle between pixelated (🙾) and smooth (🙼) image rendering" value="🙾">
             </div>
+            <span id="gifFPS">fps -</span>
             <div id="gifLoad">
                 <p id="gifLoadText">Loading...</p>
                 <progress id="gifLoadProgress"></progress>
             </div>
         </div>
-        <label for="timeRange" title="Current timestamp (with frame timestamps in tickmarks below)">Time: <input type="range" id="timeRange" list="timeTickmarks" aria-disabled="true"> <span id="time">-</span> ms</label>
+        <label for="timeRange" title="Current timestamp (with frame timestamps in tickmarks below)">Time: <input type="range" id="timeRange" list="timeTickmarks" aria-disabled="true" tabindex="-1"> <span id="time">-</span> ms</label>
         <datalist id="timeTickmarks"></datalist>
         <label for="frameRange" title="Current frame index (zero-based)">Frame: <input type="range" id="frameRange" step="1"> <span id="frame">-</span></label>
         <div id="playerControls" class="paused">
@@ -76,7 +77,7 @@
             <input type="button" id="seekPrevious" value="&LeftArrowBar;" title="previous frame (paused)">
             <input type="button" id="reverse" value="⏴" title="reverse play">
             <input type="button" id="pause" value="⏸" title="pause">
-            <input type="button" id="play" value="⏵" title="play" autofocus>
+            <input type="button" id="play" value="⏵" title="play">
             <input type="button" id="seekNext" value="&RightArrowBar;" title="next frame (paused)">
             <input type="button" id="seekEnd" value="⏭" title="last frame (paused)">
         </div>
@@ -129,8 +130,9 @@
                         <div id="frameViewButtons">
                             <input type="button" id="frameFullWindow" data-toggle="0" title="Toggle canvas fullscreen window" value="⤢">
                             <input type="button" id="frameFitWindow" data-toggle="0" title="Toggle between fit to window (🞕) and actual size (🞑)" value="🞕">
-                            <input type="button" id="frameImgSmoothing" data-toggle="1" title="Toggle between pixelated (🙾) and smooth (🙼) image rendering" value="🙼">
+                            <input type="button" id="frameImgSmoothing" data-toggle="0" title="Toggle between pixelated (🙾) and smooth (🙼) image rendering" value="🙾">
                         </div>
+                        <span id="frameFPS">fps -</span>
                         <div id="frameLoad">
                             <p id="frameLoadText">Loading...</p>
                             <progress id="frameLoadProgress"></progress>

@@ -529,7 +529,22 @@ const getGIFLoopAmount=gif=>{
 
 /** HTML elements in DOM */
 const html=Object.freeze({
-    /** @type {HTMLElement} DOM root (`<html>`) */
+    /**
+     * @type {HTMLElement} DOM root (`<html>`)
+     * @description
+     * CSS variables for pan and zoom controls:
+     * - `--offset-view-left: 0px`
+     * - `--offset-view-top: 0px`
+     * - `--canvas-width: 0px`
+     * - `--canvas-scaler: 1.0`)
+     *
+     * JS custom events when importing/loading GIF:
+     * - `loadpreview` {@linkcode html.import.preview} loaded successfully from {@linkcode html.import.url} or {@linkcode html.import.file}
+     * - `loadcancel` import was canceled from {@linkcode html.import.url} or {@linkcode html.import.file} (preview failed)
+     * - `loadstart` import stared loading from {@linkcode html.import.confirm}
+     * - `loadend` import finished and first frame was drawn
+     * - `loaderror` import error and {@linkcode html.import.menu} shown
+     */
     root:document.documentElement,
     /** @type {HTMLDivElement} Main container *///@ts-ignore element does exist in DOM
     box:document.getElementById("box"),
@@ -551,8 +566,10 @@ const html=Object.freeze({
         fullWindow:document.getElementById("fullWindow"),
         /** @type {HTMLInputElement} Button to `data-toggle` {@linkcode html.view.htmlCanvas} between 0 fit to {@linkcode html.view.view} `🞕` (default) and 1 actual size `🞑` (pan with drag controls `margin-left` & `-top` ("__px") (_offset to max half of canvas size_) and zoom `--scaler` (float)) via class `real` (and update `--canvas-width` ("__px")) *///@ts-ignore element does exist in DOM
         fitWindow:document.getElementById("fitWindow"),
-        /** @type {HTMLInputElement} Button to `data-toggle` {@linkcode html.view.htmlCanvas} between 0 pixelated `🙾` and 1 smooth `🙼` (default) image rendering via class `pixel` *///@ts-ignore element does exist in DOM
-        imgSmoothing:document.getElementById("imgSmoothing")
+        /** @type {HTMLInputElement} Button to `data-toggle` {@linkcode html.view.htmlCanvas} between 0 pixelated `🙾` (default) and 1 smooth `🙼` image rendering via class `smooth` *///@ts-ignore element does exist in DOM
+        imgSmoothing:document.getElementById("imgSmoothing"),
+        /** @type {HTMLSpanElement} Shows the FPS for {@linkcode html.view.htmlCanvas} (HTML: `FPS 00`) *///@ts-ignore element does exist in DOM
+        fps:document.getElementById("gifFPS")
     }),
     /** Time and frame sliders (under {@linkcode html.view}) */
     frameTime:Object.freeze({
@@ -680,8 +697,10 @@ const html=Object.freeze({
         fullWindow:document.getElementById("frameFullWindow"),
         /** @type {HTMLInputElement} Button to `data-toggle` {@linkcode html.frame.htmlCanvas} between 0 fit to {@linkcode html.frame.view} `🞕` (default) and 1 actual size `🞑` (pan with drag controls `margin-left` & `-top` ("__px") (_offset to max half of canvas size_) and zoom `--scaler` (float)) via class `real` (and update `--canvas-width` ("__px")) *///@ts-ignore element does exist in DOM
         fitWindow:document.getElementById("frameFitWindow"),
-        /** @type {HTMLInputElement} Button to `data-toggle` {@linkcode html.frame.htmlCanvas} between 0 pixelated `🙾` and 1 smooth `🙼` (default) image rendering via class `pixel` *///@ts-ignore element does exist in DOM
+        /** @type {HTMLInputElement} Button to `data-toggle` {@linkcode html.frame.htmlCanvas} between 0 pixelated `🙾` (default) and 1 smooth `🙼` image rendering via class `smooth` *///@ts-ignore element does exist in DOM
         imgSmoothing:document.getElementById("frameImgSmoothing"),
+        /** @type {HTMLSpanElement} Shows the FPS for {@linkcode html.frame.htmlCanvas} (HTML: `FPS 00`) *///@ts-ignore element does exist in DOM
+        fps:document.getElementById("frameFPS"),
         /** @type {HTMLSpanElement} Shows the width of the current frame (in pixels) *///@ts-ignore element does exist in DOM
         width:document.getElementById("frameWidth"),
         /** @type {HTMLSpanElement} Shows the height of the current frame (in pixels) *///@ts-ignore element does exist in DOM
@@ -768,9 +787,6 @@ const html=Object.freeze({
         abort:document.getElementById("confirmAbort")
     })
 });
-
-if(html.view.canvas==null)throw new Error("[GIF decoder] Couldn't get GIF canvas 2D context");
-if(html.frame.canvas==null)throw new Error("[GIF decoder] Couldn't get frame canvas 2D context");
 
 //~  _____              __ _                 ______ _       _
 //~ /  __ \            / _(_)                |  _  (_)     | |
@@ -864,7 +880,7 @@ const confirmDialog=Object.seal(new class ConfirmDialog{
 //~                                 __/ |
 //~                                |___/
 
-// TODO implement
+// TODO ↓ implement
 
 /**
  * URL parameters
@@ -919,14 +935,14 @@ const urlParam=(()=>{
         gifFull:(args.get("gifFull")??"0")!=="0",
         /** If the {@linkcode html.view.fitWindow} should be toggled on - default `0` (OFF) */
         gifReal:(args.get("gifReal")??"0")!=="0",
-        /** If the {@linkcode html.view.imgSmoothing} should be toggled on - default `1` (ON) */
-        gifSmooth:(args.get("gifSmooth")??"1")!=="0",
+        /** If the {@linkcode html.view.imgSmoothing} should be toggled on - default `0` (OFF) */
+        gifSmooth:(args.get("gifSmooth")??"0")!=="0",
         /** If the {@linkcode html.frame.fullWindow} should be toggled on - default `0` (OFF) */
         frameFull:(args.get("frameFull")??"0")!=="0",
         /** If the {@linkcode html.frame.fitWindow} should be toggled on - default `0` (OFF) */
         frameReal:(args.get("frameReal")??"0")!=="0",
-        /** If the {@linkcode html.frame.imgSmoothing} should be toggled on - default `1` (ON) */
-        frameSmooth:(args.get("frameSmooth")??"1")!=="0",
+        /** If the {@linkcode html.frame.imgSmoothing} should be toggled on - default `0` (OFF) */
+        frameSmooth:(args.get("frameSmooth")??"0")!=="0",
         /** The position/offset of {@linkcode html.view.htmlCanvas} ([left,top] safe integers) - default `[0,0]` (origin) */
         pos:Object.freeze(args.get("pos")?.match(/^(0|[1-9][0-9]*),(0|[1-9][0-9]*)$/)?.slice(1,3).map(v=>Number.isSafeInteger(tmpNum=Number(v))?tmpNum:0)??[0,0]),
         /**
@@ -966,22 +982,42 @@ const checkImageURL=async url=>{
 };
 
 /**
- * ## Imports a GIF automatically and renders the first frame (paused - without showing {@linkcode html.import.menu})
+ * ## Imports a GIF automatically and renders the first frame (paused - without showing {@linkcode html.import.menu} except for errors)
  * _async function_
  * @param {string} url - a URL that leads to a GIF file
- * @returns {Promise<boolean>} `true` if the GIF was successfully loaded and `false` otherwise (shows {@linkcode html.import.menu} for error feedback)
+ * @returns {Promise<boolean>} `true` if the GIF was successfully loaded and the first frame was drawn and `false` otherwise (shows {@linkcode html.import.menu} for error feedback)
  */
 const silentImportGIF=async url=>{
     "use strict";
-    await new Promise(E=>{
+    blockInput(true);
+    if(await new Promise(E=>{
         "use strict";
-        html.import.preview.addEventListener("load",E,{passive:true,once:true});
+        const R=success=>{
+            "use strict";
+            html.root.removeEventListener("loadpreview",()=>R(true));
+            html.root.removeEventListener("loadcancel",()=>R(false));
+            E(success);
+        };
+        html.root.addEventListener("loadpreview",()=>R(true),{passive:true,once:true});
+        html.root.addEventListener("loadcancel",()=>R(false),{passive:true,once:true});
         html.import.url.value=url;
         html.import.url.dispatchEvent(new InputEvent("change"));
+    }))return await new Promise(E=>{
+        "use strict";
+        const R=success=>{
+            "use strict";
+            html.root.removeEventListener("loadend",()=>R(true));
+            html.root.removeEventListener("loaderror",()=>R(false));
+            E(success);
+        };
+        html.root.addEventListener("loadend",()=>R(true),{passive:true,once:true});
+        html.root.addEventListener("loaderror",()=>R(false),{passive:true,once:true});
+        html.import.confirm.click();
     });
-    if(html.import.confirm.disabled){html.import.menu.showModal();return false;}
-    html.import.confirm.click();
-    return true;
+    html.import.menu.showModal();
+    blockInput(false);
+    html.import.abort.focus();
+    return false;
 };
 
 /**
@@ -1012,6 +1048,33 @@ const setCanvasOffset=(canvasStyle,left,top)=>{
     html.root.style.setProperty("--offset-view-left",`${Math.trunc(Math.max(width*-.5,Math.min(width*.5,left)))}px`);
     html.root.style.setProperty("--offset-view-top",`${Math.trunc(Math.max(height*-.5,Math.min(height*.5,top)))}px`);
 };
+
+/**
+ * ## Blocks input by disableing all interactible elements on the page
+ * removes focus from currently focused element (if any) when {@linkcode state} is `true`
+ * @param {boolean} state - disables inputs on `true` and re-enables input on `false`
+ */
+const blockInput=state=>{
+    if(state&&(document.activeElement instanceof HTMLElement||document.activeElement instanceof MathMLElement||document.activeElement instanceof SVGElement))document.activeElement?.blur();
+    html.view.fullWindow.disabled=state;
+    html.view.fitWindow.disabled=state;
+    html.view.imgSmoothing.disabled=state;
+    html.frameTime.frameRange.ariaDisabled=state?"true":null;
+    html.frameTime.frameRange.tabIndex=state?-1:0;
+    html.controls.seekEnd.disabled=state;
+    html.controls.seekPrevious.disabled=state;
+    html.controls.reverse.disabled=state;
+    html.controls.pause.disabled=state;
+    html.controls.play.disabled=state;
+    html.controls.seekNext.disabled=state;
+    html.controls.seekStart.disabled=state;
+    html.userInput.userInput.disabled=state||global.userInputLock;
+    html.userInput.userInputLock.disabled=state;
+    html.open.disabled=state;
+    html.frame.fullWindow.disabled=state;
+    html.frame.fitWindow.disabled=state;
+    html.frame.imgSmoothing.disabled=state;
+}
 
 /**
  * Adds `'` as digit seperator every 3 digits (from the right)
@@ -1197,6 +1260,7 @@ const updateGifInfo=(gif,fileName)=>{
 };
 /**
  * ## Initializes {@linkcode html.frameTime} with values (0 ms / frame 0)
+ * _also populates {@linkcode global.frameStarts}_\
  * call once when GIF is loaded
  * @param {GIF} gif - current GIF object
  * @returns {number} the sum of all frame delays (not counting infinities)
@@ -1208,6 +1272,7 @@ const updateTimeInfoInit=gif=>{
         const option=document.createElement("option");
         option.title=`Frame [${j}]`;
         option.text=String(timeSum);
+        global.frameStarts[j]=timeSum;
         timeSum+=v.delayTime;
         return option;
     }));
@@ -1271,10 +1336,9 @@ const updateFrameInfo=(gif,i)=>{
  * call each frame (before {@linkcode updateTimeInfo})
  * @param {GIF} gif - current GIF object
  * @param {number} i - current frame index
- * @param {number} ft - frame time in milliseconds (time when frame started)
  * @param {number} t - current time in milliseconds
  */
-const updateTimeInfoFrame=(gif,i,ft,t)=>{
+const updateTimeInfoFrame=(gif,i,t)=>{
     "use strict";
     html.frameTime.timeRange.value=(html.frameTime.time.textContent=String(t));
     html.frameTime.frameRange.value=(html.frameTime.frame.textContent=String(i));
@@ -1282,7 +1346,7 @@ const updateTimeInfoFrame=(gif,i,ft,t)=>{
         if(html.userInput.userInputArea.classList.toggle("infinity",gif.frames[i].delayTime===0)){
             html.userInput.userInputTimeoutTime.textContent="∞";
             html.userInput.userInputTimeout.removeAttribute("value");
-        }else html.userInput.userInputTimeoutTime.textContent=`-${(html.userInput.userInputTimeout.max=gif.frames[i].delayTime)-(html.userInput.userInputTimeout.value=t-ft)}`;
+        }else html.userInput.userInputTimeoutTime.textContent=`-${(html.userInput.userInputTimeout.max=gif.frames[i].delayTime)-(html.userInput.userInputTimeout.value=t-global.frameStarts[i])}`;
     }else{
         html.userInput.userInputArea.classList.toggle("infinity",false);
         html.userInput.userInputTimeoutTime.textContent="-";
@@ -1294,14 +1358,13 @@ const updateTimeInfoFrame=(gif,i,ft,t)=>{
  * call for every time step
  * @param {number} i - current frame index
  * @param {number} dt - frame delay time in milliseconds
- * @param {number} ft - frame time in milliseconds (time when frame started)
  * @param {number} t - current time in milliseconds
  */
-const updateTimeInfo=(i,dt,ft,t)=>{
+const updateTimeInfo=(i,dt,t)=>{
     "use strict";
     html.frameTime.timeRange.value=(html.frameTime.time.textContent=String(t));
     html.frameTime.frameRange.value=(html.frameTime.frame.textContent=String(i));
-    if(html.userInput.userInputArea.classList.contains("waiting")&&!html.userInput.userInputArea.classList.contains("infinity"))html.userInput.userInputTimeoutTime.textContent=`-${(html.userInput.userInputTimeout.max=dt)-(html.userInput.userInputTimeout.value=t-ft)}`;
+    if(html.userInput.userInputArea.classList.contains("waiting")&&!html.userInput.userInputArea.classList.contains("infinity"))html.userInput.userInputTimeoutTime.textContent=`-${(html.userInput.userInputTimeout.max=dt)-(html.userInput.userInputTimeout.value=t-global.frameStarts[i])}`;
 };
 
 //~  _____      _
@@ -1313,32 +1376,69 @@ const updateTimeInfo=(i,dt,ft,t)=>{
 //~                      | |
 //~                      |_|
 
+if(html.view.canvas==null)throw new Error("[GIF decoder] Couldn't get GIF canvas 2D context");
+if(html.frame.canvas==null)throw new Error("[GIF decoder] Couldn't get frame canvas 2D context");
+
 html.view.canvas.imageSmoothingEnabled=false;
 html.frame.canvas.imageSmoothingEnabled=false;
+
+html.import.preview.loading="eager";
 
 html.root.style.setProperty("--offset-view-left","0px");
 html.root.style.setProperty("--offset-view-top","0px");
 html.root.style.setProperty("--canvas-width","0px");
 html.root.style.setProperty("--canvas-scaler","1.0");
 
+blockInput(true);
+
+// TODO ↓ implement
+
 /** Global variables (sealed object) */
-const global=Object.seal({// TODO ? JSDoc
-    /** @type {GIF} *///@ts-ignore better to throw an error when it's unexpectedly still null than have ?. everywhere
+const global=Object.seal({
+    /** @type {GIF} current loaded GIF *///@ts-ignore better to throw an error when it's unexpectedly still null than have ?. everywhere
     gifDecode:null,
+    /** @type {number[]} array of start times of every frame in {@linkcode global.gifDecode.frames} (same indecies) */
+    frameStarts:[],
+    /** @type {{add(fps:number):void,sum:number}} last few frame times (fixed to size 8) */
+    fps:new class{
+        /** @param {number} size - size of the stored list */
+        constructor(size){this._arr_=new Float64Array(size);this._pos_=0;}
+        /** @param {number} ft - new frame time (time in milliseconds from last to current frame) to add to the list */
+        add(ft){this._arr_[this._pos_=(this._pos_+1)%this._arr_.length]=ft;}
+        /** @returns {number} average of all stored frame times converted to FPS */
+        get sum(){return(this._arr_.length*0x3E8)/this._arr_.reduce((o,v)=>o+v,0);}
+    }(8),
+    /** @type {0|1|-1} `0` paused | `1` playing | `-1` reverse (also see {@linkcode html.controls.container} class) */
+    playback:0,
+    /** @type {0|1|-1} value of {@linkcode global.playback} in last render loop (to reduce redundant rendering) */
+    playbackLast:0,
+    /** if {@linkcode html.userInput.userInputLock} is ON */
+    userInputLock:false,
+    /** current frame index to render */
     frameIndex:0,
+    /** frame index in last render loop (to reduce redundant rendering) */
+    frameIndexLast:0,
+    /** offscreen canvas for last undisposed frame ({@linkcode DisposalMethod.RestorePrevious}) */
     lastFullCanvas:new OffscreenCanvas(1,1),
-    /** @type {OffscreenCanvasRenderingContext2D} *///@ts-ignore better to throw an error when it's unexpectedly still null than have ?. everywhere
+    /** @type {OffscreenCanvasRenderingContext2D} 2d context of {@linkcode global.lastFullCanvas} *///@ts-ignore better to throw an error when it's unexpectedly still null than have ?. everywhere
     lastFullContext:null,
+    /** index of last undisposed frame ({@linkcode DisposalMethod.RestorePrevious}) */
     lastFullIndex:0,
+    /** `true` when currently dragging {@linkcode html.view.view} or {@linkcode html.frame.view} */
     dragging:false,
     /** if `true` dragging is from {@linkcode html.view.view} and when `false` from {@linkcode html.frame.view} */
     draggingGIF:true,
+    /** current mouse X position (only updated when {@linkcode global.dragging} is `true`) */
     mouseX:0,
+    /** current mouse Y position (only updated when {@linkcode global.dragging} is `true`) */
     mouseY:0,
+    /** zooming for {@linkcode html.view.view} and {@linkcode html.frame.view} */
     scaler:0
 });
 //@ts-ignore better to throw an error when it's unexpectedly null than have ?. everywhere
 global.lastFullContext=global.lastFullCanvas.getContext("2d");
+
+if(global.lastFullContext==null)throw new Error("[GIF decoder] Couldn't get offscreen canvas 2D context");
 
 //~  _   _ _                                 _             _
 //~ | | | (_)                               | |           | |
@@ -1412,26 +1512,26 @@ html.frame.fitWindow.addEventListener("click",()=>{
 //~ canvas context2d imageSmoothingEnabled (true) and imageSmoothingQuality (low medium high) are only for drawn images that are distorted or scaled, but since here the GIF is rendered at native resolution (within the canvas) the only smooth/sharp that is possible is via CSS image-rendering
 html.view.imgSmoothing.addEventListener("click",()=>{
     "use strict";
-    if((html.view.imgSmoothing.dataset.toggle??"1")==="0"){
+    if((html.view.imgSmoothing.dataset.toggle??"0")==="0"){
         html.view.imgSmoothing.dataset.toggle="1";
         html.view.imgSmoothing.value="🙼";
-        html.view.htmlCanvas.classList.remove("pixel");
+        html.view.htmlCanvas.classList.add("smooth");
     }else{
         html.view.imgSmoothing.dataset.toggle="0";
         html.view.imgSmoothing.value="🙾";
-        html.view.htmlCanvas.classList.add("pixel");
+        html.view.htmlCanvas.classList.remove("smooth");
     }
 },{passive:true});
 html.frame.imgSmoothing.addEventListener("click",()=>{
     "use strict";
-    if((html.frame.imgSmoothing.dataset.toggle??"1")==="0"){
+    if((html.frame.imgSmoothing.dataset.toggle??"0")==="0"){
         html.frame.imgSmoothing.dataset.toggle="1";
         html.frame.imgSmoothing.value="🙼";
-        html.frame.htmlCanvas.classList.remove("pixel");
+        html.frame.htmlCanvas.classList.add("smooth");
     }else{
         html.frame.imgSmoothing.dataset.toggle="0";
         html.frame.imgSmoothing.value="🙾";
-        html.frame.htmlCanvas.classList.add("pixel");
+        html.frame.htmlCanvas.classList.remove("smooth");
     }
 },{passive:true});
 
@@ -1546,35 +1646,56 @@ html.import.url.addEventListener("change",async()=>{
     html.import.warn.textContent=check?"":"Given URL does not lead to a GIF image";
     html.import.preview.src=check?html.import.url.value:"";
     html.import.confirm.disabled=!check;
+    if(check)html.root.dispatchEvent(new CustomEvent("loadpreview"));
+    else html.root.dispatchEvent(new CustomEvent("loadcancel"));
 },{passive:true});
 html.import.file.addEventListener("change",async()=>{
     "use strict";
     html.import.url.disabled=false;
     html.import.preview.src="";
     html.import.confirm.disabled=true;
-    if(html.import.file.files==null||html.import.file.files.length===0){html.import.warn.textContent="No files selected";return;}
-    if(html.import.file.files.length>1){html.import.warn.textContent="Please only select one file";return;}
+    if(html.import.file.files==null||html.import.file.files.length===0){
+        html.import.warn.textContent="No files selected";
+        html.root.dispatchEvent(new CustomEvent("loadcancel"));
+        return;
+    }
+    if(html.import.file.files.length>1){
+        html.import.warn.textContent="Please only select one file";
+        html.root.dispatchEvent(new CustomEvent("loadcancel"));
+        return;
+    }
     const version=await html.import.file.files[0].slice(0,6).text().then(null,reason=>{return{reason};}).catch(reason=>{return{reason};});
-    if(typeof version==="object"){html.import.warn.textContent=`Error reading file: ${version.reason}`;return;}
-    if(version!=="GIF89a"){html.import.warn.textContent="Provided file is not a suported GIF file (GIF89a)";return;}
+    if(typeof version==="object"){
+        html.import.warn.textContent=`Error reading file: ${version.reason}`;
+        html.root.dispatchEvent(new CustomEvent("loadcancel"));
+        return;
+    }
+    if(version!=="GIF89a"){
+        html.import.warn.textContent="Provided file is not a suported GIF file (GIF89a)";
+        html.root.dispatchEvent(new CustomEvent("loadcancel"));
+        return;
+    }
     html.import.url.disabled=true;
     html.import.warn.textContent="";
     html.import.preview.src=URL.createObjectURL(html.import.file.files[0]);
     html.import.confirm.disabled=false;
+    html.root.dispatchEvent(new CustomEvent("loadpreview"));
 },{passive:true});
 
-html.import.confirm.addEventListener("click",async()=>{
+html.import.confirm.addEventListener("click",()=>{
     "use strict";
     const fileSrc=html.import.preview.src,
         fileName=html.import.url.disabled?html.import.file.files?.[0]?.name:html.import.url.value.match(/^[^#?]+?\/(.+?\.gif)(?:[#?]|$)/i)?.[0];
+    blockInput(true);
     html.import.menu.close();
-    if(html.controls.container.classList.value!=="paused")html.controls.pause.click();
+    if(global.playback!==0)html.controls.pause.click();
     html.loading.gif.classList.remove("done");
     html.loading.frame.classList.remove("done");
     html.loading.gifProgress.removeAttribute("value");
     html.loading.frameProgress.removeAttribute("value");
     html.loading.gifText.textContent="Loading...";
     html.loading.frameText.textContent="Loading...";
+    html.root.dispatchEvent(new CustomEvent("loadstart"));
     decodeGIF(fileSrc,async(percentageRead,frameIndex,frame,framePos,gifSize)=>{
         "use strict";
         if(frameIndex===0){
@@ -1606,7 +1727,7 @@ html.import.confirm.addEventListener("click",async()=>{
         updateGifInfo(gif,fileName??"");
         updateTimeInfoInit(gif);
         updateFrameInfo(gif,0);
-        updateTimeInfoFrame(gif,0,0,0);
+        updateTimeInfoFrame(gif,0,0);
         //~ render first frame to every canvas
         html.view.canvas.clearRect(0,0,html.view.htmlCanvas.width,html.view.htmlCanvas.height);
         html.view.canvas.putImageData(gif.frames[0].image,gif.frames[0].left,gif.frames[0].top);
@@ -1614,11 +1735,16 @@ html.import.confirm.addEventListener("click",async()=>{
         global.lastFullContext.drawImage(html.view.htmlCanvas,0,0);
         html.frame.canvas.clearRect(0,0,html.frame.htmlCanvas.width,html.frame.htmlCanvas.height);
         html.frame.canvas.putImageData(gif.frames[0].image,gif.frames[0].left,gif.frames[0].top);
+        blockInput(false);
+        html.controls.pause.focus();
+        html.root.dispatchEvent(new CustomEvent("loadend"));
     },reason=>{
         "use strict";
         html.import.warn.textContent=reason;
         html.import.menu.showModal();
-        console.error("Error importing GIF: %s",reason);
+        blockInput(false);
+        html.import.abort.focus();
+        html.root.dispatchEvent(new CustomEvent("loaderror"));
     });
 },{passive:true});
 
@@ -1633,44 +1759,62 @@ html.import.confirm.addEventListener("click",async()=>{
 
 html.controls.seekStart.addEventListener("click",()=>{
     "use strict";
-    // TODO
+    if(global.playback!==0)html.controls.pause.click();
+    html.frameTime.frameRange.value=(html.frameTime.frame.textContent=String(global.frameIndex=0));
+    html.frameTime.timeRange.value=(html.frameTime.time.textContent=String(global.frameStarts[global.frameIndex]));
 },{passive:true});
 html.controls.seekEnd.addEventListener("click",()=>{
     "use strict";
-    // TODO
+    if(global.playback!==0)html.controls.pause.click();
+    html.frameTime.frameRange.value=(html.frameTime.frame.textContent=String(global.frameIndex=global.gifDecode.frames.length-1));
+    html.frameTime.timeRange.value=(html.frameTime.time.textContent=String(global.frameStarts[global.frameIndex]));
 },{passive:true});
 
 html.controls.seekNext.addEventListener("click",()=>{
     "use strict";
-    // TODO
+    if(global.playback!==0)html.controls.pause.click();
+    if(++global.frameIndex===global.gifDecode.frames.length)global.frameIndex=0;
+    html.frameTime.frameRange.value=(html.frameTime.frame.textContent=String(global.frameIndex));
+    html.frameTime.timeRange.value=(html.frameTime.time.textContent=String(global.frameStarts[global.frameIndex]));
 },{passive:true});
 html.controls.seekPrevious.addEventListener("click",()=>{
     "use strict";
-    // TODO
+    if(global.playback!==0)html.controls.pause.click();
+    if(--global.frameIndex===-1)global.frameIndex=global.gifDecode.frames.length-1;
+    html.frameTime.frameRange.value=(html.frameTime.frame.textContent=String(global.frameIndex));
+    html.frameTime.timeRange.value=(html.frameTime.time.textContent=String(global.frameStarts[global.frameIndex]));
 },{passive:true});
 
 html.controls.pause.addEventListener("click",()=>{
     "use strict";
-    // TODO
+    html.controls.container.classList.value="paused";
+    global.playback=0;
 },{passive:true});
-
 html.controls.play.addEventListener("click",()=>{
     "use strict";
-    // TODO
+    html.controls.container.classList.value="playing";
+    global.playback=1;
 },{passive:true});
 html.controls.reverse.addEventListener("click",()=>{
     "use strict";
-    // TODO
+    html.controls.container.classList.value="reverse";
+    global.playback=-1;
+},{passive:true});
+
+html.frameTime.frameRange.addEventListener("input",()=>{
+    "use strict";
+    if(global.playback!==0)html.controls.pause.click();
+    html.frameTime.timeRange.value=(html.frameTime.time.textContent=String(global.frameStarts[global.frameIndex=Number(html.frameTime.frameRange.value=(html.frameTime.frame.textContent=html.frameTime.frameRange.value))]));
 },{passive:true});
 
 html.userInput.userInputLock.addEventListener("click",()=>{
     "use strict";
     if((html.userInput.userInputLock.dataset.toggle??"0")==="0"){
         html.userInput.userInputLock.dataset.toggle="1";
-        html.userInput.userInput.disabled=true;
+        html.userInput.userInput.disabled=(global.userInputLock=true);
     }else{
         html.userInput.userInputLock.dataset.toggle="0";
-        html.userInput.userInput.disabled=false;
+        html.userInput.userInput.disabled=(global.userInputLock=false);
     }
 },{passive:true});
 
@@ -1696,10 +1840,15 @@ html.frame.text.background.addEventListener("click",copyHexColorToClipboard,{pas
     if(c)return;
     await new Promise(E=>setTimeout(E,0));
     html.details.frameInfo.toggleAttribute("open");
-    await silentImportGIF("Wax_fire.gif");
+    if(await silentImportGIF("Wax_fire.gif")){
+        html.controls.seekNext.click();
+        html.controls.seekNext.click();
+    }
 })(false);
 
 //! use `html.import.warn` for errors while decoding (see edge-cases of `urlParam`)
+
+//! html.view.fps.textContent=(html.frame.fps.textContent=`FPS ${global.fps.sum.toFixed(0).padStart(2,'0')}`);
 
 // TODO use animation frames and calculate timing for gif frames
 // TODO edge-case: abort update-loop if previous and current animation frame timestamp is the same value
@@ -1772,8 +1921,8 @@ const gifLoadQueue=Object.preventExtensions([()=>{
     else if(urlParam.frameFull)html.frame.fullWindow.click();
     if(urlParam.gifReal)html.view.fitWindow.click();
     if(urlParam.frameReal)html.frame.fitWindow.click();
-    if(!urlParam.gifSmooth)html.view.imgSmoothing.click();
-    if(!urlParam.frameSmooth)html.frame.imgSmoothing.click();
+    if(urlParam.gifSmooth)html.view.imgSmoothing.click();
+    if(urlParam.frameSmooth)html.frame.imgSmoothing.click();
     if(urlParam.userLock)html.userInput.userInputLock.click();
 })();
 

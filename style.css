@@ -10,8 +10,7 @@ body{
     padding: 0;
     margin: 0;
     overflow: hidden;
-    font-family: "Times New Roman", Times, serif;
-    font-size: large;
+    font: large "Times New Roman", Times, serif;
 }
 ::selection{
     background-color: #F90;
@@ -67,8 +66,7 @@ textarea{
     height: 1.75rem;
     overflow: auto;
     scrollbar-gutter: stable;
-    font-family: "Times New Roman", Times, serif;
-    font-size: medium;
+    font: medium "Times New Roman", Times, serif;
 }
 input[type=button]{
     background-color: #333;
@@ -109,7 +107,7 @@ progress{
 }
 input[type=range]{height: 1.375rem;}
 progress{height: 1rem;}
-progress:indeterminate{accent-color: #AAA;}
+progress:indeterminate{accent-color: #0A0;}
 input[type=range][aria-disabled=true]{pointer-events: none;}
 input[type=range][aria-disabled=true]::-webkit-slider-thumb{visibility: hidden;}
 input[data-toggle="1"]{background-color: #222;}
@@ -189,18 +187,18 @@ div#box>h1>span.hint{
 }
 div#gifView{
     grid-area: 2/1/3/2;
-    width: 30rem;
-    height: 30rem;
+    width: 30.1rem;
+    height: 30.2rem;
 }
 div#frameView{
-    width: 25rem;
-    height: 25rem;
+    width: 25.1rem;
+    height: 25.2rem;
 }
 div#gifView,
 div#frameView{
     background-color: #000;
     padding: .5rem;
-    border-radius: .5rem;
+    /*~ border-radius: .5rem; (non-zero values) can result in subpixel aliasing */
     box-sizing: border-box;
     overflow: hidden;
     user-select: none;
@@ -237,8 +235,7 @@ div#frameViewButtons>input{
     padding: 0;
     width: 1.5rem;
     height: 1.5rem;
-    font-family: "consolas", monospace;
-    font-size: 1rem;
+    font: 1rem "consolas", monospace;
 }
 canvas#htmlCanvas,
 canvas#htmlFrameCanvas{
@@ -250,10 +247,10 @@ canvas#htmlFrameCanvas{
     position: absolute;
     top: 50%;
     left: 50%;
-    image-rendering: auto;
+    image-rendering: pixelated;
 }
-canvas#htmlCanvas.pixel,
-canvas#htmlFrameCanvas.pixel{image-rendering: pixelated;}
+canvas#htmlCanvas.smooth,
+canvas#htmlFrameCanvas.smooth{image-rendering: auto;}
 canvas#htmlCanvas.real,
 canvas#htmlFrameCanvas.real{
     object-fit: unset;
@@ -269,6 +266,13 @@ div#gifView:has(canvas#htmlCanvas.real),
 div#frameView:has(canvas#htmlFrameCanvas.real){cursor: grab;}
 html.grabbing,
 html.grabbing *{cursor: grabbing !important;}
+span#gifFPS,
+span#frameFPS{
+    position: absolute;
+    top: .1rem;
+    left: .2rem;
+    font: small-caps small "consolas", monospace;
+}
 div#gifLoad,
 div#frameLoad{
     position: absolute;
@@ -292,7 +296,7 @@ p#gifLoadText,
 p#frameLoadText{
     margin-block: .5rem;
     color: #0F0;
-    font: x-large 'consolas',monospace;
+    font: x-large "consolas", monospace;
     text-shadow: 0 0 4px #000,
         1px 1px #000,
         1px -1px #000,
@@ -303,20 +307,13 @@ progress#gifLoadProgress,
 progress#frameLoadProgress{
     width: 100%;
     height: 2rem;
-    accent-color: #0F0;
 }
-progress#gifLoadProgress:indeterminate,
-progress#frameLoadProgress:indeterminate{accent-color: #0A0;}
-div#gifView:has(div#gifLoad:not(.done)),
-div#frameView:has(div#frameLoad:not(.done)),
-div#gifView:has(div#gifLoad:not(.done))~label[for=frameRange],
-div#gifView:has(div#gifLoad:not(.done))~div#playerControls,
-div#gifView:has(div#gifLoad:not(.done))~fieldset#userInputArea>input{pointer-events: none;}
 label[for=timeRange]{
     grid-area: 3/1/4/2;
     pointer-events: none;
 }
 label[for=frameRange]{grid-area: 4/1/5/2;}
+label[for=frameRange]:has(input#frameRange[aria-disabled=true]){pointer-events: none;}
 input#frameRange{accent-color: #0A0;}
 div#playerControls{
     grid-area: 5/1/6/2;
@@ -330,8 +327,7 @@ div#playerControls>input{
     width: 2.5rem;
     height: 2rem;
     padding-bottom: 2rem;
-    font-size: 1.2rem;
-    font-family: "consolas", monospace;
+    font: 1.2rem "consolas", monospace;
 }
 div#playerControls>input:disabled{
     background-color: #222;
@@ -397,9 +393,7 @@ div#frameColorTable>span,
 div#appExtList>span,
 div#commentsList>span,
 div#unExtList>span{
-    font-size: large;
-    font-weight: bold;
-    font-style: italic;
+    font: italic bold large;
     color: #0A0;
 }
 div#globalColorTable>label.background-flag>input,

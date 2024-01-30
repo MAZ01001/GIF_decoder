@@ -381,7 +381,7 @@ div#infoPanels{
     padding: .5rem;
     gap: .5rem;
     width: 28rem;
-    height: 42.8rem;
+    height: 47rem;
     overflow: auto;
     scrollbar-gutter: stable both-edges;
     justify-content: flex-start;

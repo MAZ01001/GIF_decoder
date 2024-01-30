@@ -1976,7 +1976,7 @@ window.requestAnimationFrame(async function loop(time){
         }
         do{
             if(--i<0){
-                if(!global.loopForce&&--global.loopCounter<0){
+                if(!global.loopForce&&Number.isFinite(global.loops)&&--global.loopCounter<0){
                     if(global.loopEnd=!global.loopEnd){
                         global.time=(global.frameIndex=0);
                         global.loopCounter=0;
@@ -2015,7 +2015,7 @@ window.requestAnimationFrame(async function loop(time){
         }
         do{
             if(++i>=global.gifDecode.frames.length){
-                if(!global.loopForce&&++global.loopCounter>global.loops){
+                if(!global.loopForce&&Number.isFinite(global.loops)&&++global.loopCounter>global.loops){
                     if(global.loopEnd=!global.loopEnd){
                         global.time=global.totalTime;
                         global.frameIndex=global.gifDecode.frames.length-1;
@@ -2042,7 +2042,7 @@ window.requestAnimationFrame(async function loop(time){
                 seek-=f.delayTime;
             }
         }while(true);
-    }while(false);else global.loopEnd=!global.loopForce&&((global.frameIndex===0&&global.loopCounter===0)||(global.frameIndex===global.gifDecode.frames.length-1&&global.loopCounter===global.loops));
+    }while(false);else global.loopEnd=!global.loopForce&&Number.isFinite(global.loops)&&((global.frameIndex===0&&global.loopCounter===0)||(global.frameIndex===global.gifDecode.frames.length-1&&global.loopCounter===global.loops));
     global.skipFrame=NaN;
     await Promise.resolve();
     //~ render frame and update time

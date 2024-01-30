@@ -13,29 +13,12 @@
     <div id="box">
         <h1 id="gifHeading">GIF<span class="hint" title="Only supports GIF files with version &quot;GIF89a&quot;">*</span> decoder</h1>
         <!-- TODO
-            ! import menu ~ when URL or file is inputed (onChange) disable the other ~ if GIF loads successfully enable Start-button
             ! warning BEFORE decoding GIFs over ~ 10MiB (also check MIME type when loading)
-            ! loading screen ~ with progressbar
             ~ timeTickmarks indicate frame timestamps ~ ignore for user-input-flags
-            ? the htmlFrameCanvas should only be rendered to if it's visible
             ~ use offscreen canvas for special disposal method case (3)
-            ! when userInputLock is ON then the normal userInptu button is disabled
-            ! when user input is expected and lock is OFF highlight userInputField (border color lime-green ~)
             ? auto hide gifView buttons after 1sec no mouse movement (js mouse move) or mouse leaves div (css hover)
-            ! URL parameters: gifURL (string) | fullWindow (0/1) | fitWindow (0/1) | imgSmoothing (0/1) | frameIndex (int) | status (string/int: pause-0/play-1/reverse-2)
-            !>> also frame canvas ~ fit window only one (gif > frame)
-            ! clicking on frame slider should pause playback and render current frame selected (when flipping through frames the delay/timeout should not decrease/update)
-            ? fieldsets/container resizeable (vertical) ~ with limits/defaults
-            ? flags for rendering ~ disable background-frame (background-color transparent?) ~ choose transparent color (index?)
-            ? show data of reserved fields
-            ? fps view (based on animation frames not GIF playback fps)
-            ! fps of the canvas update rate (animation frame rate)
-            ! add title="" to every element
-            ? don't update frame information during playback ? ~ to fast ? performance / lag ? test ! ~ only when details are open ?
-            ? speed controls
-            ? loop controls ~ default off unless the netscape extension says loop ?
-            ? useless stats
-            ? (left) click on input-color field copies the colors hex code
+            ! speed controls (variable/code already supports this - normal and reverse) ~ left of "Loop override" fieldset
+            ? useless/verbose stats
             ? (AppExt) raw bytes as hex string (textarea) ~ instead of copy button ? both
             ~ gif and frame canvas have same size, pan, and zoom
             ? maybe add scroll shadows ↓
@@ -43,17 +26,16 @@
             ?>> JS function https://github.com/MAZ01001/MAZ01001.github.io/blob/master/index.html#L250-L270
             ?>> JS event    https://github.com/MAZ01001/MAZ01001.github.io/blob/master/index.html#L318-L320
             ! force-clear-last-frame flag for URL ~ toggle button in gif/frame view (default on)
-            ! canvas area background checker board (like transparent color button)
-            !>> toggle button for dark (default) and bright checker texture
             ? add [byte position] to title ~ comment, application/unkown extension, and global/local color table
-            ! frame slider "input" event pauses playback (maybe needs mousedown event for pause and input/change for interaction ~ frame selection (update frame within loop so max 60fps no matter how fast user inputs on the slider))
             ~ frames with `0` delay/timeout count nothing to the time total
-            ! new canvas button to change canvas background/-color
-            !>> dialog menu with some options and a live preview
-            !>> pause playback and use screenshoot of canvas as preview (slider for screenshoot opacity | image above inputs)
-            !>> color input for background color
-            !>> checkbox to toggle checker texture and enable checker color (second color input)
-            !>> number input for checker size (~ 1/10 rem)
+            ! use the background color index to color the background of the HMTL canvas (fallback to #000 if not available)
+            ? new canvas button to change canvas background/-color
+            ?>> dialog menu with some options and a live preview
+            ?>> pause playback and use screenshoot of canvas as preview (slider for screenshoot opacity | image above inputs)
+            ?>> toggle to use backgroud color index (disabled in OFF state if not available and disables all following inputs if toggled ON)
+            ?>> color input for background color
+            ?>> checkbox to toggle checker texture and enable checker color (second color input)
+            ?>> number input for checker size (~ 1/10 rem)
             ? add `avgAlpha` (`decodeGIF`) to `urlParam`
         -->
         <div id="gifView" title="GIF render canvas">
@@ -63,8 +45,8 @@
                 <input type="button" id="fitWindow" data-toggle="0" title="Toggle between fit to window (🞕) and actual size (🞑)" value="🞕">
                 <input type="button" id="imgSmoothing" data-toggle="0" title="Toggle between pixelated (🙾) and smooth (🙼) image rendering" value="🙾">
             </div>
-            <span id="gifFPS">fps -</span>
-            <div id="gifLoad">
+            <span id="gifFPS" title="Shows FPS for GIF canvas (not related to GIF speed)">fps -</span>
+            <div id="gifLoad" title="Shows current decoding progress">
                 <p id="gifLoadText">Loading...</p>
                 <progress id="gifLoadProgress"></progress>
             </div>
@@ -82,9 +64,13 @@
             <input type="button" id="seekEnd" value="⏭" title="last frame (paused)">
         </div>
         <fieldset id="userInputArea"><legend title="If highlighted blue needs user input to continue playback">User input</legend>
-            <label for="userInputTimeout" title="Timeout for current frame (if present / when waiting for user input)">Timeout: <progress id="userInputTimeout" value="0" max="10"></progress> <span id="userInputTimeoutTime">-</span> ms</label>
+            <label for="userInputTimeout" title="Timeout for current frame (if present / when waiting for user input)">Timeout: <progress id="userInputTimeout" value></progress> <span id="userInputTimeoutTime">-</span> ms</label>
             <input type="button" id="userInput" title="Click to continue playing GIF" value="Continue">
             <input type="button" id="userInputLock" data-toggle="0" title="Click to toggle instant user input" value="Lock">
+        </fieldset>
+        <fieldset id="loopArea"><legend title="Control GIF looping behaviour">Loop override</legend>
+            <span title="Shows current and maximum GIF loop amount"><span id="loopText">-</span> Loops</span>
+            <input type="button" id="loopForce" data-toggle="0" title="Click to (toggle) force infinite repeats" value="Force infinite">
         </fieldset>
         <div id="infoPanels">
             <input type="button" id="open" value="Open GIF" title="Click to open the import menu">
@@ -132,8 +118,8 @@
                             <input type="button" id="frameFitWindow" data-toggle="0" title="Toggle between fit to window (🞕) and actual size (🞑)" value="🞕">
                             <input type="button" id="frameImgSmoothing" data-toggle="0" title="Toggle between pixelated (🙾) and smooth (🙼) image rendering" value="🙾">
                         </div>
-                        <span id="frameFPS">fps -</span>
-                        <div id="frameLoad">
+                        <span id="frameFPS" title="Shows FPS for frame canvas (not related to GIF speed)">fps -</span>
+                        <div id="frameLoad" title="Shows current decoding progress">
                             <p id="frameLoadText">Loading...</p>
                             <progress id="frameLoadProgress"></progress>
                         </div>

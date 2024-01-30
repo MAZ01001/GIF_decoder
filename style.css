@@ -139,7 +139,7 @@ div#frameColorTable{
     display: flex;
     flex-direction: row;
     flex-wrap: wrap;
-    gap: 0.25rem 1.5rem;
+    gap: .25rem 1.5rem;
     place-items: safe center;
     align-content: safe center;
     justify-content: flex-start;
@@ -271,7 +271,14 @@ span#frameFPS{
     position: absolute;
     top: .1rem;
     left: .2rem;
+    color: #0A0;
     font: small-caps small "consolas", monospace;
+    white-space: pre;
+    text-shadow:
+        1px 1px #000,
+        1px -1px #000,
+        -1px 1px #000,
+        -1px -1px #000;
 }
 div#gifLoad,
 div#frameLoad{
@@ -352,17 +359,20 @@ fieldset#userInputArea{
     place-content: safe center;
 }
 fieldset#userInputArea:not(.waiting):not(.infinity)>label,
-fieldset#userInputArea:not(.waiting):not(.infinity)>input#userInput{opacity: 0.25;}
+fieldset#userInputArea:not(.waiting):not(.infinity)>input#userInput,
+fieldset#loopArea:has(input#loopForce[data-toggle=true])>span{opacity: .25;}
 fieldset#userInputArea.waiting{border: 2px groove #44F;}
 fieldset#userInputArea.waiting progress#userInputTimeout{accent-color: #44F;}
 fieldset#userInputArea.infinity>label{color: #F44;}
 fieldset#userInputArea.infinity progress#userInputTimeout{accent-color: #F44;}
 label[for=userInputTimeout]{grid-area: 1/1/2/3;}
 input#userInput{grid-area: 2/1/3/2;}
-input#userInput:disabled{color: #0A0;}
+input#userInput:disabled,
+input#loopForce:disabled{color: #0A0;}
 input#userInputLock{grid-area: 2/2/3/3;}
 input#userInput,
-input#userInputLock{font-size: medium;}
+input#userInputLock,
+input#loopForce{font-size: medium;}
 div#infoPanels{
     grid-area: 2/2/8/3;
     background-color: #111;
@@ -382,12 +392,12 @@ div#frameInfoArea,
 div#frameTextArea{
     display: flex;
     flex-direction: column;
-    gap: 0.5rem;
+    gap: .5rem;
     align-items: stretch;
     place-content: safe center;
 }
 div#frameTextArea.empty td[id],
-div#frameTextArea.empty td:has([id]){opacity: 0.25;}
+div#frameTextArea.empty td:has([id]){opacity: .25;}
 div#globalColorTable>span,
 div#frameColorTable>span,
 div#appExtList>span,
@@ -412,14 +422,14 @@ div#appExtList>fieldset>legend{font-family: "consolas", monospace;}
 div#commentsList{
     display: flex;
     flex-direction: column;
-    gap: 0.5rem;
+    gap: .5rem;
     align-items: stretch;
     place-content: safe center;
 }
 div#commentsList>div{
     display: flex;
     flex-direction: column;
-    gap: 0.25rem;
+    gap: .25rem;
     align-items: stretch;
     place-content: safe center;
     padding: .5rem;
@@ -475,7 +485,7 @@ dialog#importMenu>fieldset:first-of-type>p{
     font-size: medium;
 }
 label[for="importFile"]:has(input:disabled),
-label[for="importURL"]:has(input:disabled){opacity: 0.25;}
+label[for="importURL"]:has(input:disabled){opacity: .25;}
 img#importPreview{
     min-width: 6rem;
     min-height: 4rem;

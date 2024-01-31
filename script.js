@@ -345,7 +345,9 @@ const decodeGIF=async(gifURL,progressCallback,avgAlpha)=>{
                     break;
                     case GIFDataHeaders.CommentExtension:
                         //~ parse comment extension - one or more blocks each stating their size (1B) [1-255]
-                        gif.comments.push([getLastBlock(`[${byteStream.pos}] after ${getLastBlock()}`),byteStream.readSubBlocks()]);
+                        const pos=`[${byteStream.pos}] after ${getLastBlock()}`;
+                        getLastBlock(`comment extension [${gif.comments.length}] at ${pos}`);
+                        gif.comments.push([pos,byteStream.readSubBlocks()]);
                     break;
                     case GIFDataHeaders.PlainTextExtension:
                         //~ parse plain text extension - text to render with the following frame (needs global color table)
@@ -2070,11 +2072,12 @@ window.requestAnimationFrame(async function loop(time){
             }
         }
         // TODO text extension
-        //? auto wraps to new line when grid width is reached (and height does allow for it - otherwise end rendering even when there are characters left ~ pre calculate line breaks and string length)
+        //? auto wraps to new line when grid width is reached (no fractional cells) and height does allow for it - otherwise end rendering even when there are characters left ~ pre calculate line breaks and string length
         //? cell height is font size (px)
         //? use CanvasRenderingContext2D.letterSpacing (can be negative) for cell width (px)
         //? monospace font family
         //? draw text background as one big box with background color (index into global color table) ~ or as outline ? font a little larger and letter spacing a little smaller and draw behind the text
+        //! check transparent color index of this frame as it also applies to the text extension for this frame
         global.frameIndexLast=global.frameIndex;
     }
     updateTimeInfo();

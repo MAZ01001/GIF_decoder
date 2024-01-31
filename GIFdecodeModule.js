@@ -337,7 +337,9 @@ export const decodeGIF=async(gifURL,progressCallback,avgAlpha)=>{
                     break;
                     case GIFDataHeaders.CommentExtension:
                         //~ parse comment extension - one or more blocks each stating their size (1B) [1-255]
-                        gif.comments.push([getLastBlock(`[${byteStream.pos}] after ${getLastBlock()}`),byteStream.readSubBlocks()]);
+                        const pos=`[${byteStream.pos}] after ${getLastBlock()}`;
+                        getLastBlock(`comment extension [${gif.comments.length}] at ${pos}`);
+                        gif.comments.push([pos,byteStream.readSubBlocks()]);
                     break;
                     case GIFDataHeaders.PlainTextExtension:
                         //~ parse plain text extension - text to render with the following frame (needs global color table)

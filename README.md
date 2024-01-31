@@ -5,6 +5,8 @@ GIF decoding and rendering with HTML5 canvas
 Here is a link to the [live website](https://maz01001.github.io/GIF_decoder/ "Open GIF decoder/player online") for the GIF decoder/player,
 with [URL parameters](#available-url-parameters "scroll down to the Available URL parameters section") as specified below.
 
+Also, see the [specs for GIF89a](https://www.w3.org/Graphics/GIF/spec-gif89a.txt "Open W3 GIF89a specs (1990)") and [`What's In A GIF: GIF Explorer`](https://www.matthewflickinger.com/lab/whatsinagif/gif_explorer.asp "Open What's In A GIF - GIF Explorer by Matthew (2005)") by @MrFlick for more technical details.
+
 - [Available URL parameters](#available-url-parameters "scroll down to the Available URL parameters section")
   - [Edge cases](#edge-cases "scroll down to Edge cases section")
 - [Exported constants](#exported-constants "scroll down to the Exported constants section")
@@ -95,10 +97,13 @@ See description/type information [further below](#disposalmethod-attributes-enum
 
 Decodes a GIF into its components for rendering on a canvas.
 
-<details><summary><code>async decodeGIF(gifURL, progressCallback, avgAlpha)</code></summary>
+<details><summary><code>async decodeGIF(gifURL, avgAlpha, progressCallback, fetchProgressCallback)</code></summary>
+
+function parameters (in order)
 
 1. `gifURL` (`string`) The URL of a GIF file.
-2. `progressCallback` (optional `function`) Optional callback for showing progress of decoding process (when GIF is interlaced calls after each pass (4x on the same frame)).
+2. `avgAlpha` (optional `boolean`) If this is `true` then, when encountering a transparent pixel, it uses the average value of the pixels RGB channels to calculate the alpha channels value, otherwise alpha channel is either 0 or 1. Default `false`.
+3. `progressCallback` (optional `function`) Optional callback for showing progress of decoding process (when GIF is interlaced calls after each pass (4x on the same frame)).
    If asynchronous, it waits for it to resolve.
 
    ```typescript
@@ -111,12 +116,19 @@ Decodes a GIF into its components for rendering on a canvas.
    ): any
    ```
 
-3. `avgAlpha` (optional `boolean`) If this is `true` then, when encountering a transparent pixel, it uses the average value of the pixels RGB channels to calculate the alpha channels value, otherwise alpha channel is either 0 or 1. Default `false`.
+4. `fetchProgressCallback` (optional `function`) Optional callback for showing progress of fetching the image data (in bytes).
+
+   ```typescript
+   function(
+       loaded: number,      // amount of bytes loaded
+       total: number | null // total amount of bytes to load (or null if not available)
+   ): any
+   ```
 
 Returns ([`GIF`](#gif-attributes "scroll down to the `GIF` attributes section")) a promise of the [`GIF`](#gif-attributes "scroll down to the `GIF` attributes section") with each frame decoded separately.
 The promise may reject for one the following reasons:
 
-- `fetch error` when trying to fetch the GIF from {@linkcode gifURL}
+- `fetch error` when trying to fetch the GIF from {@linkcode gifURL} (probably blocked by [CORS security options](https://developer.mozilla.org/en-US/docs/Web/HTTP/CORS "MDN: Cross-Origin Resource Sharing"))
 - `fetch aborted` when trying to fetch the GIF from {@linkcode gifURL}
 - `loading error [CODE]` when URL yields a status code that's not between 200 and 299 (inclusive)
 - `not a supported GIF file` when the GIF version is not `GIF89a`
@@ -125,7 +137,12 @@ The promise may reject for one the following reasons:
   - `plain text extension without global color table`
   - `undefined block found`
 
-Throws (`TypeError`) if `gifURL` is not a string, `progressCallback` is given but not a function, or `avgAlpha` is given but not a boolean.
+Throws (`TypeError`) for one of the following (in order)
+
+1. `gifURL` is not a string
+2. `avgAlpha` is given (not `null` or `undefined`) but not a boolean
+3. `progressCallback` is given (not `null` or `undefined`) but not a function
+4. `fetchProgressCallback` is given (not `null` or `undefined`) but not a function.
 
 </details>
 
@@ -140,6 +157,8 @@ Extract the animation loop amount from a [`GIF`](#gif-attributes "scroll down to
 >
 
 <details><summary><code>getGIFLoopAmount(gif)</code></summary>
+
+function parameters (in order)
 
 1. `gif` ([`GIF`](#gif-attributes "scroll down to the `GIF` attributes section")) A parsed GIF object.
 

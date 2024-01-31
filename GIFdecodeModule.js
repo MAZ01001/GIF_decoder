@@ -354,10 +354,10 @@ export const decodeGIF=async(gifURL,progressCallback,avgAlpha)=>{
                         plainTextData.width=byteStream.nextTwoBytes();
                         //~ text grid height (2B) - height of the text grid (in pixels)
                         plainTextData.height=byteStream.nextTwoBytes();
-                        //~ text character cell width (2B) - width (in pixels) of each cell (character) in text grid
-                        plainTextData.charWidth=byteStream.nextTwoBytes();
-                        //~ text character cell height (2B) - height (in pixels) of each cell (character) in text grid
-                        plainTextData.charHeight=byteStream.nextTwoBytes();
+                        //~ text character cell width (1B) - width (in pixels) of each cell (character) in text grid
+                        plainTextData.charWidth=byteStream.nextByte();
+                        //~ text character cell height (1B) - height (in pixels) of each cell (character) in text grid
+                        plainTextData.charHeight=byteStream.nextByte();
                         //~ text foreground color index (1B) - index into the global color table for the foreground color of the text
                         plainTextData.foregroundColor=byteStream.nextByte();
                         //~ text background color index (1B) - index into the global color table for the background color of the text

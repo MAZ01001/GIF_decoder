@@ -66,10 +66,11 @@ const DisposalMethod=Object.freeze({
 /**
  * ## Decodes a GIF into its components for rendering on a canvas
  * @param {string} gifURL - the URL of a GIF file
- * @param {(percentageRead:number,frameIndex:number,frame:ImageData,framePos:[number,number],gifSize:[number,number])=>any} [progressCallback] - Optional callback for showing progress of decoding process (when GIF is interlaced calls after each pass (4x on the same frame)) - if asynchronous, it waits for it to resolve
  * @param {boolean} [avgAlpha] - if this is `true` then, when encountering a transparent pixel, it uses the average value of the pixels RGB channels to calculate the alpha channels value, otherwise alpha channel is either 0 or 1 - _default `false`_
+ * @param {(percentageRead:number,frameIndex:number,frame:ImageData,framePos:[number,number],gifSize:[number,number])=>any} [progressCallback] - Optional callback for showing progress of decoding process (when GIF is interlaced calls after each pass (4x on the same frame)) - if asynchronous, it waits for it to resolve before continuing decoding
+ * @param {(loaded:number,total:number|null)=>any} [fetchProgressCallback] - Optional callback for showing progress of fetching the image data (in bytes)
  * @returns {Promise<GIF>} the GIF with each frame decoded separately - may reject for the following reasons
- * - `fetch error` when trying to fetch the GIF from {@linkcode gifURL}
+ * - `fetch error` when trying to fetch the GIF from {@linkcode gifURL} (probably blocked by CORS security options)
  * - `fetch aborted` when trying to fetch the GIF from {@linkcode gifURL}
  * - `loading error [CODE]` when URL yields a status code that's NOT between 200 and 299 (inclusive)
  * - `not a supported GIF file` when GIF version is NOT `GIF89a`
@@ -79,13 +80,13 @@ const DisposalMethod=Object.freeze({
  * - - `undefined block found`
  * @throws {TypeError} if {@linkcode gifURL} is not a string, {@linkcode progressCallback} is given but not a function, or {@linkcode avgAlpha} is given but not a boolean
  */
-const decodeGIF=async(gifURL,progressCallback,avgAlpha)=>{
+const decodeGIF=async(gifURL,avgAlpha,progressCallback,fetchProgressCallback)=>{
     "use strict";
     if(typeof gifURL!=="string")throw new TypeError("[decodeGIF] gifURL is not a string");
-    progressCallback??=()=>null;
-    if(typeof progressCallback!=="function")throw new TypeError("[decodeGIF] progressCallback is not a function");
     avgAlpha??=false;
     if(typeof avgAlpha!=="boolean")throw TypeError("[decodeGIF] avgAlpha is not a boolean");
+    if(progressCallback!=null&&typeof progressCallback!=="function")throw new TypeError("[decodeGIF] progressCallback is not a function");
+    if(fetchProgressCallback!=null&&typeof fetchProgressCallback!=="function")throw new TypeError("[decodeGIF] fetchProgressCallback is not a function");
     /**
      * @typedef {Object} ByteStream
      * @property {number} pos current position in `data`
@@ -275,8 +276,7 @@ const decodeGIF=async(gifURL,progressCallback,avgAlpha)=>{
                                     if(InterlaceOffsets[pass]+InterlaceSteps[pass]*lineIndex>=frame.height)break;
                                 }
                             }
-                        //@ts-ignore variable is checked for type function in parent scope
-                        await progressCallback((byteStream.pos+1)/byteStream.data.length,getFrameIndex(),image,[frame.left,frame.top],[gif.width,gif.height]);
+                        await progressCallback?.((byteStream.pos+1)/byteStream.data.length,getFrameIndex(),image,[frame.left,frame.top],[gif.width,gif.height]);
                     }
                     frame.image=image;
                 }else{
@@ -297,8 +297,7 @@ const decodeGIF=async(gifURL,progressCallback,avgAlpha)=>{
                             if(dic.length>=(1<<size)&&size<0xC)size++;
                         }
                     }
-                    //@ts-ignore variable is checked for type function in parent scope
-                    await progressCallback((byteStream.pos+1)/byteStream.data.length,getFrameIndex(),frame.image=image,[frame.left,frame.top],[gif.width,gif.height]);
+                    await progressCallback?.((byteStream.pos+1)/byteStream.data.length,getFrameIndex(),frame.image=image,[frame.left,frame.top],[gif.width,gif.height]);
                 }
                 getLastBlock(`frame [${getFrameIndex()}]`);
             break;
@@ -390,9 +389,15 @@ const decodeGIF=async(gifURL,progressCallback,avgAlpha)=>{
         return false;
     }
     return new Promise((resolve,reject)=>{
+        "use strict";
         const xhr=new XMLHttpRequest();
         xhr.responseType="arraybuffer";
+        xhr.onprogress=ev=>{
+            "use strict";
+            fetchProgressCallback?.(ev.loaded,ev.lengthComputable?ev.total:null);
+        };
         xhr.onload=async()=>{
+            "use strict";
             if(xhr.status<0xC8||xhr.status>=0x12C){reject(`loading error [${xhr.status}]`);return;}
             //? https://www.w3.org/Graphics/GIF/spec-gif89a.txt
             //? https://www.matthewflickinger.com/lab/whatsinagif/bits_and_bytes.asp
@@ -502,7 +507,7 @@ const decodeGIF=async(gifURL,progressCallback,avgAlpha)=>{
         };
         xhr.onerror=()=>reject("fetch error");
         xhr.onabort=()=>reject("fetch aborted");
-        xhr.open('GET',gifURL,true);
+        xhr.open("GET",gifURL,true);
         xhr.send();
     });
 };
@@ -1060,24 +1065,6 @@ if(global.lastFullContext==null)throw new Error("[GIF decoder] Couldn't get offs
 //~  \___/ \__|_|_|_|\__|\__, | |_|  \__,_|_| |_|\___|\__|_|\___/|_| |_|___/
 //~                       __/ |
 //~                      |___/
-
-/**
- * ## Checks if the given {@linkcode url} leads to a GIF file
- * _async function_
- * @param {string} url - a URL that leads to a GIF file
- * @returns {Promise<boolean>} `true` if {@linkcode url} has MIME type `image/gif` and `false` otherwise
- */
-const checkImageURL=async url=>{
-    "use strict";
-    if(url.startsWith("javascript:"))return false;
-    if(url.startsWith("data:")){
-        if(url.startsWith("data:image/gif"))return true;
-        return false;
-    }
-    const res=await fetch(url,{method:"HEAD"}).catch(()=>null);
-    const buff=await res?.blob();
-    return buff?.type?.startsWith("image/gif")??false;
-};
 
 /**
  * ## Imports a GIF automatically and renders the first frame (paused - without showing {@linkcode html.import.menu} except for errors)
@@ -1645,13 +1632,35 @@ html.import.abort.addEventListener("click",()=>html.import.menu.close(),{passive
 
 html.import.url.addEventListener("change",async()=>{
     "use strict";
-    const check=await checkImageURL(html.import.url.value);
-    html.import.file.disabled=check;
-    html.import.warn.textContent=check?"":"Given URL does not lead to a GIF image";
-    html.import.preview.src=check?html.import.url.value:"";
-    html.import.confirm.disabled=!check;
-    if(check)html.root.dispatchEvent(new CustomEvent("loadpreview"));
-    else html.root.dispatchEvent(new CustomEvent("loadcancel"));
+    if((html.import.url.value=html.import.url.value.trim())===""){
+        html.import.warn.textContent=(html.import.preview.src="");
+        html.import.confirm.disabled=!(html.import.file.disabled=false);
+        html.root.dispatchEvent(new CustomEvent("loadcancel"));
+        return;
+    }
+    const check=await(async url=>{
+        "use strict";
+        if(url.startsWith("javascript:"))return null;
+        if(url.startsWith("data:"))return url.startsWith("data:image/")?/^data:image\/gif[;,]/.test(url):null;
+        return await new Promise(/**@param {(value:boolean|null)=>void} E*/E=>{
+            "use strict";
+            /** @param {boolean} success */
+            const R=success=>{
+                "use strict";
+                html.import.preview.removeEventListener("load",()=>R(true));
+                html.import.preview.removeEventListener("error",()=>R(false));
+                E(success?true:null);
+            };
+            html.import.preview.addEventListener("load",()=>R(true),{passive:true,once:true});
+            html.import.preview.addEventListener("error",()=>R(false),{passive:true,once:true});
+            html.import.preview.src=url;
+        });
+        //! can't check MIME-type with HEAD-fetch due to CORS (some servers also don't allow HEAD-fetch for images)
+        //! ~let `decodeGIF` figure out if this is a GIF file (or the GET request still results in a "fetch error")
+    })(html.import.url.value);
+    if(!(check??false))html.import.preview.src="";
+    html.import.warn.textContent=check==null?"Given URL does not lead to an image":(check?"":"Given URL does not lead to a GIF image");
+    html.root.dispatchEvent(new CustomEvent((html.import.confirm.disabled=!(html.import.file.disabled=check??false))?"loadcancel":"loadpreview"));
 },{passive:true});
 html.import.file.addEventListener("change",async()=>{
     "use strict";
@@ -1659,7 +1668,7 @@ html.import.file.addEventListener("change",async()=>{
     html.import.preview.src="";
     html.import.confirm.disabled=true;
     if(html.import.file.files==null||html.import.file.files.length===0){
-        html.import.warn.textContent="No files selected";
+        html.import.warn.textContent="";
         html.root.dispatchEvent(new CustomEvent("loadcancel"));
         return;
     }
@@ -1686,12 +1695,12 @@ html.import.file.addEventListener("change",async()=>{
     html.root.dispatchEvent(new CustomEvent("loadpreview"));
 },{passive:true});
 
-//~ load & decode GIF (show visual progress), update/reset variables/UI, and render first frame (paused) or open inport menu for error feedback
+//~ load & decode GIF (log fetch progress & show visual decoding progress), update/reset variables/UI, and render first frame (paused) or open inport menu for error feedback
 
-html.import.confirm.addEventListener("click",()=>{
+html.import.confirm.addEventListener("click",async()=>{
     "use strict";
     const fileSrc=html.import.preview.src,
-        fileName=html.import.url.disabled?html.import.file.files?.[0]?.name:html.import.url.value.match(/^[^#?]+?\/(.+?\.gif)(?:[#?]|$)/i)?.[0];
+        fileName=html.import.url.disabled?html.import.file.files?.[0]?.name:html.import.url.value.match(/^[^#?]+?\/?(.+?\.gif)(?:[#?]|$)/i)?.[0];
     blockInput(true);
     html.import.menu.close();
     if(global.playback!==0)html.controls.pause.click();
@@ -1701,8 +1710,9 @@ html.import.confirm.addEventListener("click",()=>{
     html.loading.frameProgress.removeAttribute("value");
     html.loading.gifText.textContent="Loading...";
     html.loading.frameText.textContent="Loading...";
+    await new Promise(E=>setTimeout(E,0));
     html.root.dispatchEvent(new CustomEvent("loadstart"));
-    decodeGIF(fileSrc,async(percentageRead,frameIndex,frame,framePos,gifSize)=>{
+    decodeGIF(fileSrc,undefined,async(percentageRead,frameIndex,frame,framePos,gifSize)=>{
         "use strict";
         if(frameIndex===0){
             //~ only on first call
@@ -1723,6 +1733,10 @@ html.import.confirm.addEventListener("click",()=>{
         }
         //~ wait for one cycle
         await new Promise(E=>setTimeout(E,0));
+    },(loaded,total)=>{
+        "use strict";
+        if(total==null)console.log(`%cFetching GIF: %i bytes loaded`,"background-color:#000;color:#0A0;",loaded);
+        else console.log(`%cFetching GIF: %i of %i bytes loaded (%s %%)`,"background-color:#000;color:#0A0;",loaded,total,(loaded*0x64/total).toFixed(2).padStart(6,' '));
     }).then(gif=>{
         "use strict";
         //~ reset variables and UI
@@ -1784,6 +1798,8 @@ html.import.confirm.addEventListener("click",()=>{
         "use strict";
         html.import.warn.textContent=reason;
         html.import.menu.showModal();
+        html.loading.gif.classList.add("done");
+        html.loading.frame.classList.add("done");
         blockInput(false);
         html.import.abort.focus();
         html.root.dispatchEvent(new CustomEvent("loaderror"));
@@ -1910,7 +1926,46 @@ html.loop.toggle.addEventListener("click",()=>{
         return;
     }
     //~ load GIF
-    // TODO modify example GIF file - add every known extension
+    /* TODO create example GIF file with all known features - https://www.w3.org/Graphics/GIF/spec-gif89a.txt - via GIMP and then edit in HEX-editor ~ create empty file with new size then override all bytes (since vscode-hexeditor can't add bytes...yet)
+        - 500*500 px total
+        - 30 frames
+          - irregular frame delays
+          - not full frame changes (frames are smaller than whole GIF)
+        - every disposal method
+          - ! requires some planning in the frame image contents ~ visually
+        - loops 3 times
+        - global color table and at least one local color table (can be a copy of global color table)
+          - use transparency of local color table
+        - user input flag on at least two frames (with and without timeout)
+        - unknown app extension
+          - 0x21FF0C544553545F4150502045585400
+        - text extensions for first 10 frames (graphics control extension > image descriptor > [text extension] > image data)
+          - 0x21010C0A000A00200010000408 <forground_global_color_index_1B> <background_global_color_index_1B> 105445585420666F726672616D655B305D00
+          - 0x21010C0A000A00200010000408 <forground_global_color_index_1B> <background_global_color_index_1B> 105445585420666F726672616D655B315D00
+          - 0x21010C0A000A00200010000408 <forground_global_color_index_1B> <background_global_color_index_1B> 105445585420666F726672616D655B325D00
+          - 0x21010C0A000A00200010000408 <forground_global_color_index_1B> <background_global_color_index_1B> 105445585420666F726672616D655B335D00
+          - 0x21010C0A000A00200010000408 <forground_global_color_index_1B> <background_global_color_index_1B> 105445585420666F726672616D655B345D00
+          - 0x21010C0A000A00200010000408 <forground_global_color_index_1B> <background_global_color_index_1B> 105445585420666F726672616D655B355D00
+          - 0x21010C0A000A00200010000408 <forground_global_color_index_1B> <background_global_color_index_1B> 105445585420666F726672616D655B365D00
+          - 0x21010C0A000A00200010000408 <forground_global_color_index_1B> <background_global_color_index_1B> 105445585420666F726672616D655B375D00
+          - 0x21010C0A000A00200010000408 <forground_global_color_index_1B> <background_global_color_index_1B> 105445585420666F726672616D655B385D00
+          - 0x21010C0A000A00200010000408 <forground_global_color_index_1B> <background_global_color_index_1B> 105445585420666F726672616D655B395D00
+        - comment after image descriptor and before image data for the last frame
+          - 0x21FE4D5445535420636F6D6D656E740D0A616674657220696D6167652064657363726970746F7220616E64206265666F726520696D616765206461746120666F7220746865206C617374206672616D6500
+        - comment after image descriptor and before image data for the 10th frame
+          - 0x21FE4D5445535420636F6D6D656E740D0A616674657220696D6167652064657363726970746F7220616E64206265666F726520696D616765206461746120666F72207468652031307468206672616D6500
+        - comment after image descriptor and before image data for the 100th frame
+          - 0x21FE4E5445535420636F6D6D656E740D0A616674657220696D6167652064657363726970746F7220616E64206265666F726520696D616765206461746120666F7220746865203130307468206672616D6500
+        - unknown extensions (after image data (and app extension) of frames 0-3)
+          - unknown extension 0
+            - 0x2154115445535420657874656E73696F6E20233000
+          - unknown extension 1
+            - 0x2145115445535420657874656E73696F6E20233100
+          - unknown extension 2
+            - 0x2153115445535420657874656E73696F6E20233200
+          - unknown extension 3
+            - 0x2154115445535420657874656E73696F6E20233300
+    */
     if(!await silentImportGIF(urlParam.url??"Wax_fire.gif"))return;
     if(urlParam.f!==0){
         html.frameTime.frameRange.value=String(urlParam.f);
@@ -2076,6 +2131,7 @@ window.requestAnimationFrame(async function loop(time){
         //? cell height is font size (px)
         //? use CanvasRenderingContext2D.letterSpacing (can be negative) for cell width (px)
         //? monospace font family
+        //? when reading characters <0x20 or >0xf7 render a space (0x20) instead
         //? draw text background as one big box with background color (index into global color table) ~ or as outline ? font a little larger and letter spacing a little smaller and draw behind the text
         //! check transparent color index of this frame as it also applies to the text extension for this frame
         global.frameIndexLast=global.frameIndex;

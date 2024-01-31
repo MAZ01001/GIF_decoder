@@ -5,7 +5,7 @@ GIF decoding and rendering with HTML5 canvas
 Here is a link to the [live website](https://maz01001.github.io/GIF_decoder/ "Open GIF decoder/player online") for the GIF decoder/player,
 with [URL parameters](#available-url-parameters "scroll down to the Available URL parameters section") as specified below.
 
-Also, see the [specs for GIF89a](https://www.w3.org/Graphics/GIF/spec-gif89a.txt "Open W3 GIF89a specs (1990)") and [`What's In A GIF: GIF Explorer`](https://www.matthewflickinger.com/lab/whatsinagif/gif_explorer.asp "Open What's In A GIF - GIF Explorer by Matthew (2005)") by @MrFlick for more technical details.
+Also, see the [specs for GIF89a](https://www.w3.org/Graphics/GIF/spec-gif89a.txt "Open W3 GIF89a specs (1990)") and [`What's In A GIF: GIF Explorer`](https://www.matthewflickinger.com/lab/whatsinagif/gif_explorer.asp "Open What's In A GIF - GIF Explorer by Matthew (2005)") by [@MrFlick](https://github.com/MrFlick "MrFlick on GitHub") for more technical details.
 
 - [Available URL parameters](#available-url-parameters "scroll down to the Available URL parameters section")
   - [Edge cases](#edge-cases "scroll down to Edge cases section")

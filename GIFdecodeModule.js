@@ -58,10 +58,11 @@ export const DisposalMethod=Object.freeze({
 /**
  * ## Decodes a GIF into its components for rendering on a canvas
  * @param {string} gifURL - the URL of a GIF file
- * @param {(percentageRead:number,frameIndex:number,frame:ImageData,framePos:[number,number],gifSize:[number,number])=>any} [progressCallback] - Optional callback for showing progress of decoding process (when GIF is interlaced calls after each pass (4x on the same frame)) - if asynchronous, it waits for it to resolve
  * @param {boolean} [avgAlpha] - if this is `true` then, when encountering a transparent pixel, it uses the average value of the pixels RGB channels to calculate the alpha channels value, otherwise alpha channel is either 0 or 1 - _default `false`_
+ * @param {(percentageRead:number,frameIndex:number,frame:ImageData,framePos:[number,number],gifSize:[number,number])=>any} [progressCallback] - Optional callback for showing progress of decoding process (when GIF is interlaced calls after each pass (4x on the same frame)) - if asynchronous, it waits for it to resolve before continuing decoding
+ * @param {(loaded:number,total:number|null)=>any} [fetchProgressCallback] - Optional callback for showing progress of fetching the image data (in bytes)
  * @returns {Promise<GIF>} the GIF with each frame decoded separately - may reject for the following reasons
- * - `fetch error` when trying to fetch the GIF from {@linkcode gifURL}
+ * - `fetch error` when trying to fetch the GIF from {@linkcode gifURL} (probably blocked by CORS security options)
  * - `fetch aborted` when trying to fetch the GIF from {@linkcode gifURL}
  * - `loading error [CODE]` when URL yields a status code that's NOT between 200 and 299 (inclusive)
  * - `not a supported GIF file` when GIF version is NOT `GIF89a`
@@ -71,13 +72,13 @@ export const DisposalMethod=Object.freeze({
  * - - `undefined block found`
  * @throws {TypeError} if {@linkcode gifURL} is not a string, {@linkcode progressCallback} is given but not a function, or {@linkcode avgAlpha} is given but not a boolean
  */
-export const decodeGIF=async(gifURL,progressCallback,avgAlpha)=>{
+export const decodeGIF=async(gifURL,avgAlpha,progressCallback,fetchProgressCallback)=>{
     "use strict";
     if(typeof gifURL!=="string")throw new TypeError("[decodeGIF] gifURL is not a string");
-    progressCallback??=()=>null;
-    if(typeof progressCallback!=="function")throw new TypeError("[decodeGIF] progressCallback is not a function");
     avgAlpha??=false;
     if(typeof avgAlpha!=="boolean")throw TypeError("[decodeGIF] avgAlpha is not a boolean");
+    if(progressCallback!=null&&typeof progressCallback!=="function")throw new TypeError("[decodeGIF] progressCallback is not a function");
+    if(fetchProgressCallback!=null&&typeof fetchProgressCallback!=="function")throw new TypeError("[decodeGIF] fetchProgressCallback is not a function");
     /**
      * @typedef {Object} ByteStream
      * @property {number} pos current position in `data`
@@ -267,8 +268,7 @@ export const decodeGIF=async(gifURL,progressCallback,avgAlpha)=>{
                                     if(InterlaceOffsets[pass]+InterlaceSteps[pass]*lineIndex>=frame.height)break;
                                 }
                             }
-                        //@ts-ignore variable is checked for type function in parent scope
-                        await progressCallback((byteStream.pos+1)/byteStream.data.length,getFrameIndex(),image,[frame.left,frame.top],[gif.width,gif.height]);
+                        await progressCallback?.((byteStream.pos+1)/byteStream.data.length,getFrameIndex(),image,[frame.left,frame.top],[gif.width,gif.height]);
                     }
                     frame.image=image;
                 }else{
@@ -289,8 +289,7 @@ export const decodeGIF=async(gifURL,progressCallback,avgAlpha)=>{
                             if(dic.length>=(1<<size)&&size<0xC)size++;
                         }
                     }
-                    //@ts-ignore variable is checked for type function in parent scope
-                    await progressCallback((byteStream.pos+1)/byteStream.data.length,getFrameIndex(),frame.image=image,[frame.left,frame.top],[gif.width,gif.height]);
+                    await progressCallback?.((byteStream.pos+1)/byteStream.data.length,getFrameIndex(),frame.image=image,[frame.left,frame.top],[gif.width,gif.height]);
                 }
                 getLastBlock(`frame [${getFrameIndex()}]`);
             break;
@@ -382,9 +381,15 @@ export const decodeGIF=async(gifURL,progressCallback,avgAlpha)=>{
         return false;
     }
     return new Promise((resolve,reject)=>{
+        "use strict";
         const xhr=new XMLHttpRequest();
         xhr.responseType="arraybuffer";
+        xhr.onprogress=ev=>{
+            "use strict";
+            fetchProgressCallback?.(ev.loaded,ev.lengthComputable?ev.total:null);
+        };
         xhr.onload=async()=>{
+            "use strict";
             if(xhr.status<0xC8||xhr.status>=0x12C){reject(`loading error [${xhr.status}]`);return;}
             //? https://www.w3.org/Graphics/GIF/spec-gif89a.txt
             //? https://www.matthewflickinger.com/lab/whatsinagif/bits_and_bytes.asp
@@ -494,7 +499,7 @@ export const decodeGIF=async(gifURL,progressCallback,avgAlpha)=>{
         };
         xhr.onerror=()=>reject("fetch error");
         xhr.onabort=()=>reject("fetch aborted");
-        xhr.open('GET',gifURL,true);
+        xhr.open("GET",gifURL,true);
         xhr.send();
     });
 };

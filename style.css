@@ -15,6 +15,7 @@ body{
 ::selection{
     background-color: #F90;
     color: #000;
+    text-shadow: none;
 }
 dialog::backdrop{background-color: #0007;}
 dialog[open]{
@@ -122,37 +123,6 @@ label>progress+span{
 /*~ | | | / _ \ __/ _` | | |/ _ \/ _` | */
 /*~ | |/ /  __/ || (_| | | |  __/ (_| | */
 /*~ |___/ \___|\__\__,_|_|_|\___|\__,_| */
-div#infoPanels,
-fieldset#totalSize,
-fieldset#frameSize,
-fieldset#framePosition,
-fieldset#frameTextField>details>fieldset,
-div#appExtList{
-    display: flex;
-    flex-direction: column;
-    gap: .25rem;
-    place-items: safe center;
-    place-content: safe center;
-}
-div#globalColorTable,
-div#frameColorTable{
-    display: flex;
-    flex-direction: row;
-    flex-wrap: wrap;
-    gap: .25rem 1.5rem;
-    place-items: safe center;
-    align-content: safe center;
-    justify-content: flex-start;
-}
-div#globalColorTable,
-div#frameColorTable,
-div#appExtList,
-div#commentsList,
-div#unExtList{
-    max-height: 8rem;
-    overflow: auto;
-    scrollbar-gutter: stable both-edges;
-}
 div#box{
     position: absolute;
     top: 50%;
@@ -373,6 +343,18 @@ input#userInputLock{grid-area: 2/2/3/3;}
 input#userInput,
 input#userInputLock,
 input#loopForce{font-size: medium;}
+div#infoPanels,
+fieldset#totalSize,
+fieldset#frameSize,
+fieldset#framePosition,
+fieldset#frameTextField>details>fieldset,
+div#appExtList{
+    display: flex;
+    flex-direction: column;
+    gap: .25rem;
+    place-items: safe center;
+    place-content: safe center;
+}
 div#infoPanels{
     grid-area: 2/2/8/3;
     background-color: #111;
@@ -398,6 +380,24 @@ div#frameTextArea{
 }
 div#frameTextArea.empty td[id],
 div#frameTextArea.empty td:has([id]){opacity: .25;}
+div#globalColorTable,
+div#frameColorTable{
+    display: grid;
+    grid-template-columns: repeat(3, auto);
+    align-items: safe center;
+    justify-items: stretch;
+    align-content: safe center;
+    justify-content: space-between;
+}
+div#globalColorTable,
+div#frameColorTable,
+div#appExtList,
+div#commentsList,
+div#unExtList{
+    max-height: 8rem;
+    overflow: auto;
+    scrollbar-gutter: stable both-edges;
+}
 div#globalColorTable>span,
 div#frameColorTable>span,
 div#appExtList>span,
@@ -405,6 +405,11 @@ div#commentsList>span,
 div#unExtList>span{
     font: italic bold large;
     color: #0A0;
+}
+div#globalColorTable>label,
+div#frameColorTable>label{
+    text-align: end;
+    font-family: "consolas", monospace;
 }
 div#globalColorTable>label.background-flag>input,
 div#frameColorTable>label.background-flag>input{background-color: #000;}
@@ -495,9 +500,15 @@ img#importPreview{
 }
 p#importWarn{
     margin: .5rem 0;
+    max-width: 25rem;
     color: #F44;
-    font-size: 1.2rem;
-    text-shadow: 0 0 .2rem #000, 0 0 .2rem #000;
+    text-align: center;
+    font-size: 1.4rem;
+    text-shadow: 0 0 4px #000,
+        1px 1px #000,
+        1px -1px #000,
+        -1px 1px #000,
+        -1px -1px #000;
 }
 p#importWarn:empty{margin: 0;}
 div#importActions{

@@ -1031,12 +1031,6 @@ const global=Object.seal({
     frameIndex:0,
     /** frame index in last render loop (to reduce redundant rendering) */
     frameIndexLast:0,
-    /** offscreen canvas for last undisposed frame ({@linkcode DisposalMethod.RestorePrevious}) */
-    lastFullCanvas:new OffscreenCanvas(1,1),
-    /** @type {OffscreenCanvasRenderingContext2D} 2d context of {@linkcode global.lastFullCanvas} *///@ts-ignore assigned and checked for null further below
-    lastFullContext:null,
-    /** index of last undisposed frame ({@linkcode DisposalMethod.RestorePrevious}) */
-    lastFullIndex:0,
     /** `true` when currently dragging {@linkcode html.view.view} or {@linkcode html.frame.view} */
     dragging:false,
     /** if `true` dragging is from {@linkcode html.view.view} and when `false` from {@linkcode html.frame.view} */
@@ -1052,10 +1046,6 @@ const global=Object.seal({
     /** zooming for {@linkcode html.view.view} and {@linkcode html.frame.view} */
     scaler:0
 });
-//@ts-ignore checked for null further below
-global.lastFullContext=global.lastFullCanvas.getContext("2d");
-
-if(global.lastFullContext==null)throw new Error("[GIF decoder] Couldn't get offscreen canvas 2D context");
 
 //~  _   _ _   _ _ _ _            __                  _   _
 //~ | | | | | (_) (_) |          / _|                | | (_)
@@ -1741,11 +1731,9 @@ html.import.confirm.addEventListener("click",async()=>{
         "use strict";
         //~ reset variables and UI
         html.loop.toggle.disabled=(global.loops=getGIFLoopAmount(global.gifDecode=gif))===Infinity;
-        global.loopCounter=(global.time=(global.frameIndex=(global.frameIndexLast=(global.lastFullIndex=0))));
+        global.loopCounter=(global.time=(global.frameIndex=(global.frameIndexLast=0)));
         global.loopEnd=true;
         global.skipFrame=NaN;
-        global.lastFullCanvas.width=gif.width;
-        global.lastFullCanvas.height=gif.height;
         html.loading.gif.classList.add("done");
         html.loading.frame.classList.add("done");
         //~ update GIF info
@@ -1781,8 +1769,6 @@ html.import.confirm.addEventListener("click",async()=>{
         //~ render first frame to every canvas
         html.view.canvas.clearRect(0,0,html.view.htmlCanvas.width,html.view.htmlCanvas.height);
         html.view.canvas.putImageData(gif.frames[0].image,gif.frames[0].left,gif.frames[0].top);
-        global.lastFullContext.clearRect(0,0,global.lastFullCanvas.width,global.lastFullCanvas.height);
-        global.lastFullContext.drawImage(html.view.htmlCanvas,0,0);
         html.frame.canvas.clearRect(0,0,html.frame.htmlCanvas.width,html.frame.htmlCanvas.height);
         html.frame.canvas.putImageData(gif.frames[0].image,gif.frames[0].left,gif.frames[0].top);
         //~ reset pan & zoom
@@ -1818,14 +1804,14 @@ html.import.confirm.addEventListener("click",async()=>{
 html.controls.seekStart.addEventListener("click",()=>{
     "use strict";
     if(global.playback!==0)html.controls.pause.click();
-    global.loopCounter=0;
+    if(!global.loopForce&&Number.isFinite(global.loops))global.loopCounter=0;
     html.frameTime.frameRange.value=(html.frameTime.frame.textContent=String(global.frameIndex=0));
     html.frameTime.timeRange.value=(html.frameTime.time.textContent=String(global.time=global.frameStarts[global.frameIndex]));
 },{passive:true});
 html.controls.seekEnd.addEventListener("click",()=>{
     "use strict";
     if(global.playback!==0)html.controls.pause.click();
-    global.loopCounter=global.loops;
+    if(!global.loopForce&&Number.isFinite(global.loops))global.loopCounter=global.loops;
     html.frameTime.frameRange.value=(html.frameTime.frame.textContent=String(global.frameIndex=global.gifDecode.frames.length-1));
     html.frameTime.timeRange.value=(html.frameTime.time.textContent=String(global.time=global.frameStarts[global.frameIndex]));
 },{passive:true});
@@ -1835,7 +1821,7 @@ html.controls.seekNext.addEventListener("click",()=>{
     if(global.playback!==0)html.controls.pause.click();
     if(++global.frameIndex>=global.gifDecode.frames.length){
         global.frameIndex=0;
-        if(++global.loopCounter>global.loops)global.loopCounter=0;
+        if(!global.loopForce&&Number.isFinite(global.loops)&&++global.loopCounter>global.loops)global.loopCounter=0;
     }
     html.frameTime.frameRange.value=(html.frameTime.frame.textContent=String(global.frameIndex));
     html.frameTime.timeRange.value=(html.frameTime.time.textContent=String(global.time=global.frameStarts[global.frameIndex]));
@@ -1845,7 +1831,7 @@ html.controls.seekPrevious.addEventListener("click",()=>{
     if(global.playback!==0)html.controls.pause.click();
     if(--global.frameIndex<0){
         global.frameIndex=global.gifDecode.frames.length-1;
-        if(--global.loopCounter<0)global.loopCounter=global.loops;
+        if(!global.loopForce&&Number.isFinite(global.loops)&&--global.loopCounter<0)global.loopCounter=global.loops;
     }
     html.frameTime.frameRange.value=(html.frameTime.frame.textContent=String(global.frameIndex));
     html.frameTime.timeRange.value=(html.frameTime.time.textContent=String(global.time=global.frameStarts[global.frameIndex]));
@@ -2015,7 +2001,8 @@ html.loop.toggle.addEventListener("click",()=>{
 window.requestAnimationFrame(async function loop(time){
     "use strict";
     if(time===global.lastAnimationFrameTime){window.requestAnimationFrame(loop);return;}
-    const delta=time-global.lastAnimationFrameTime;
+    const delta=time-global.lastAnimationFrameTime,
+        previousPlayback=global.playback;
     global.fps.add(delta);
     html.view.fps.textContent=(html.frame.fps.textContent=`FPS ${global.fps.sum.toFixed(0).padStart(3,' ')}`);
     //~ calculate time, frame, and loop amount (with user input)
@@ -2107,22 +2094,53 @@ window.requestAnimationFrame(async function loop(time){
         updateFrameInfo();
         updateTimeInfoFrame();
         // TODO pixel aspect ratio
+
+        // TODO testing ! performance
+        // TODO ? only go back as far as frame 0 when first loop (when not infinite looping)
+        if(previousPlayback>0){
+            const queue=[global.frameIndex];
+            forLoop:for(
+                let i=(global.frameIndex===0?global.gifDecode.frames.length:global.frameIndex)-1;
+                global.frameIndex<(global.frameIndexLast+1)?i>global.frameIndex&&i<global.frameIndexLast:i<global.frameIndexLast;
+                --i<0&&(i+=global.gifDecode.frames.length)
+            )switch(global.gifDecode.frames[i].disposalMethod){
+                case DisposalMethod.UndefinedA://! fall through
+                case DisposalMethod.UndefinedB://! fall through
+                case DisposalMethod.UndefinedC://! fall through
+                case DisposalMethod.UndefinedD://! fall through
+                case DisposalMethod.Unspecified://! fall through
+                case DisposalMethod.DoNotDispose:
+                    queue.push[i];
+                break;
+                case DisposalMethod.RestoreBackgroundColor:
+                const f=global.gifDecode.frames[i];
+                    html.view.canvas.fillStyle=global.gifDecode.backgroundColorIndex==null?"#000":`rgb(${global.gifDecode.globalColorTable[global.gifDecode.backgroundColorIndex].join(' ')} / ${global.gifDecode.backgroundColorIndex===f.transparentColorIndex?'0':'1'})`;
+                    html.view.canvas.fillRect(f.left,f.top,f.width,f.height);
+                break forLoop;
+                case DisposalMethod.RestorePrevious:break;
+            }
+            for(let i=queue.length-1,f=global.gifDecode.frames[queue[i]];i>=0;--i>=0&&(f=global.gifDecode.frames[queue[i]])){
+                html.frame.canvas.clearRect(0,0,html.frame.htmlCanvas.width,html.frame.htmlCanvas.height);
+                html.frame.canvas.putImageData(f.image,f.left,f.top);
+                html.view.canvas.drawImage(html.frame.htmlCanvas,f.left,f.top,f.width,f.height,f.left,f.top,f.width,f.height);
+            }
+        }else
+        // TODO invert for reverse ~ paused depends ? from 0 or continue...
+
         if(global.frameIndex>global.frameIndexLast)for(let i=global.frameIndexLast+1;i<=global.frameIndex;i++){
             html.frame.canvas.clearRect(0,0,html.frame.htmlCanvas.width,html.frame.htmlCanvas.height);
             html.frame.canvas.putImageData(global.gifDecode.frames[i].image,global.gifDecode.frames[i].left,global.gifDecode.frames[i].top);
             // TODO disposal method (via offscreen canvas)
-            html.view.canvas.drawImage(html.frame.htmlCanvas,global.gifDecode.frames[i].left,global.gifDecode.frames[i].top);
+            html.view.canvas.drawImage(html.frame.htmlCanvas,0,0);
             if(i%100===0)await Promise.resolve();
         }else{
             //~ render from beginning (expect frame drops)
-            global.lastFullContext.clearRect(0,0,global.lastFullCanvas.width,global.lastFullCanvas.height);
-            global.lastFullIndex=0;
             html.view.canvas.clearRect(0,0,html.view.htmlCanvas.width,html.view.htmlCanvas.height);
             for(let i=0;i<=global.frameIndex;i++){
                 html.frame.canvas.clearRect(0,0,html.frame.htmlCanvas.width,html.frame.htmlCanvas.height);
                 html.frame.canvas.putImageData(global.gifDecode.frames[i].image,global.gifDecode.frames[i].left,global.gifDecode.frames[i].top);
                 // TODO disposal method (via offscreen canvas)
-                html.view.canvas.drawImage(html.frame.htmlCanvas,global.gifDecode.frames[i].left,global.gifDecode.frames[i].top);
+                html.view.canvas.drawImage(html.frame.htmlCanvas,0,0);
                 if(i%100===0)await Promise.resolve();
             }
         }
@@ -2139,102 +2157,4 @@ window.requestAnimationFrame(async function loop(time){
     updateTimeInfo();
     global.lastAnimationFrameTime=time;
     window.requestAnimationFrame(loop);
-});
-
-//~  _____ ___________
-//~ |  ___|  _  |  ___|
-//~ | |__ | | | | |_
-//~ |  __|| | | |  _|
-//~ | |___\ \_/ / |
-//~ \____/ \___/\_|
-
-throw"EOF";
-// TODO ↓
-
-/*
-    const img=new ImageData(Uint8ClampedArray.of(1,0x7F,0xFF,0xFF),1,1,{colorSpace:"srgb"});
-    // replace pixels on canvas with image (incl. alpha)
-    ctx.putImageData(img,0,0);
-    // add image pixels to canvas (add alpha)
-    ctx.drawImage(await createImageBitmap(img),0,0);
-*/
-
-let frameMemoryUsage=0;
-
-const forceClearLastFrame=true,
-    alertErrors=true,
-    gifURL="https://upload.wikimedia.org/wikipedia/commons/a/a2/Wax_fire.gif";
-
-decodeGIF(gifURL,async(percentageRead,frameCount,frameUpdate,framePos,gifSize)=>{
-    progressBar.value=percentageRead;
-    ctx.drawImage(await createImageBitmap(frameUpdate),(canvas.width-gifSize[0])*.5+framePos[0],(canvas.height-gifSize[1])*.5+framePos[1]);
-    frameMemoryUsage+=frameUpdate.data.length;
-    const text=`frame ${formatInt(frameCount)} (${formatInt(frameMemoryUsage)} Bytes)`,
-        textMet=ctx.measureText(text),
-        textpos=[(canvas.width-textMet.width)*.5,canvas.height*.5-(textMet.actualBoundingBoxAscent+textMet.actualBoundingBoxDescent)];
-    ctx.strokeStyle="white";
-    ctx.lineWidth=1.2;
-    ctx.strokeText(text,textpos[0],textpos[1],gifSize[0]);
-    ctx.lineWidth=1;
-    ctx.fillStyle="black";
-    ctx.fillText(text,textpos[0],textpos[1],gifSize[0]);
-},false).then(async gif=>{
-    progressBar.hidden=true;
-    const offscreenCanvas=new OffscreenCanvas(gif.width,gif.height);
-    const offscreenContext=offscreenCanvas.getContext("2d");
-    if(offscreenContext==null)throw new Error("could not create offscreen canvas context");
-    offscreenContext.imageSmoothingQuality="low";
-    offscreenContext.imageSmoothingEnabled=false;
-    offscreenContext.clearRect(0,0,offscreenCanvas.width,offscreenCanvas.height);
-    let frameI=0,
-        loopCount=getGIFLoopAmount(gif)??0;
-    if(loopCount===0)loopCount=Infinity;
-    // TODO modify to get perfect timing for each frame (now it's a little slower than viewing the GIF on its own)
-    const update=async()=>{
-        ctx.clearRect(0,0,canvas.width,canvas.height);
-        const pos=[(canvas.width-gif.width)*.5,(canvas.height-gif.height)*.5];
-        const frame=gif.frames[frameI];
-        // TODO when printing image account for > gif.pixelAspectRatio
-        switch(frame.disposalMethod){
-            case DisposalMethod.UndefinedA://! fall through
-            case DisposalMethod.UndefinedB://! fall through
-            case DisposalMethod.UndefinedC://! fall through
-            case DisposalMethod.UndefinedD://! fall through
-            case DisposalMethod.Replace:
-                offscreenContext.drawImage(await createImageBitmap(frame.image),frame.left,frame.top);
-                ctx.drawImage(offscreenCanvas,pos[0],pos[1]);
-                offscreenContext.clearRect(0,0,offscreenCanvas.width,offscreenCanvas.height);
-            break;
-            case DisposalMethod.Combine:
-                offscreenContext.drawImage(await createImageBitmap(frame.image),frame.left,frame.top);
-                ctx.drawImage(offscreenCanvas,pos[0],pos[1]);
-            break;
-            case DisposalMethod.RestoreBackground:
-                offscreenContext.drawImage(await createImageBitmap(frame.image),frame.left,frame.top);
-                ctx.drawImage(offscreenCanvas,pos[0],pos[1]);
-                offscreenContext.clearRect(0,0,offscreenCanvas.width,offscreenCanvas.height);
-                if(gif.globalColorTable.length===0)offscreenContext.putImageData(gif.frames[0].image,pos[0]+frame.left,pos[1]+frame.top);
-                else offscreenContext.putImageData(gif.backgroundImage,pos[0],pos[1]);
-            break;
-            case DisposalMethod.RestorePrevious:
-                const previousImageData=offscreenContext.getImageData(0,0,offscreenCanvas.width,offscreenCanvas.height);
-                offscreenContext.drawImage(await createImageBitmap(frame.image),frame.left,frame.top);
-                ctx.drawImage(offscreenCanvas,pos[0],pos[1]);
-                offscreenContext.clearRect(0,0,offscreenCanvas.width,offscreenCanvas.height);
-                offscreenContext.putImageData(previousImageData,0,0);
-            break;
-        }
-        if(++frameI>=gif.frames.length){
-            if(--loopCount<=0)return;
-            frameI=0;
-            //? so apparently some GIFs seam to set the disposal method of the last frame wrong?...so this is a "fix" for that (clear after the last frame)
-            if(forceClearLastFrame)offscreenContext.clearRect(0,0,offscreenCanvas.width,offscreenCanvas.height);
-        }
-        // TODO add a "press any key" when user input delay flag is set for this frame (and timeout when delay time is non-zero)
-        setTimeout(update,gif.frames[frameI].delayTime);
-    }
-    setTimeout(update,0);
-}).catch(err=>{
-    console.error(err);
-    if(alertErrors)alert(err?.message??err);
 });

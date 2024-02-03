@@ -218,16 +218,16 @@ The `GIF` object constructed has the following attributes.
 
 <details open><summary>Click to toggle table</summary>
 
-| Name                | Internal value <br> (`number`) | Description           | Action                                                  |
-| ------------------- | ------------------------------ | --------------------- | ------------------------------------------------------- |
-| `Replace`           | `0`                            | unspecified           | replaces entire frame                                   |
-| `Combine`           | `1`                            | do not dispose        | combine with previous frame                             |
-| `RestoreBackground` | `2`                            | restore to background | combine with background (first frame)                   |
-| `RestorePrevious`   | `3`                            | restore to previous   | restore to previous undisposed frame state then combine |
-| `UndefinedA`        | `4`                            | undefined             | fallback to `Replace`                                   |
-| `UndefinedB`        | `5`                            | undefined             | fallback to `Replace`                                   |
-| `UndefinedC`        | `6`                            | undefined             | fallback to `Replace`                                   |
-| `UndefinedD`        | `7`                            | undefined             | fallback to `Replace`                                   |
+| Name                     | Internal value <br> (`number`) | Description                 | Action                                                            |
+| ------------------------ | ------------------------------ | --------------------------- | ----------------------------------------------------------------- |
+| `Unspecified`            | `0`                            | unspecified                 | do nothing with image                                             |
+| `DoNotDispose`           | `1`                            | do not dispose              | keep image to next frame                                          |
+| `RestoreBackgroundColor` | `2`                            | restore to background color | frame area gets filled with background color (can be transparent) |
+| `RestorePrevious`        | `3`                            | restore to previous         | dispose frame data after rendering                                |
+| `UndefinedA`             | `4`                            | undefined                   | fallback to `Unspecified`                                         |
+| `UndefinedB`             | `5`                            | undefined                   | fallback to `Unspecified`                                         |
+| `UndefinedC`             | `6`                            | undefined                   | fallback to `Unspecified`                                         |
+| `UndefinedD`             | `7`                            | undefined                   | fallback to `Unspecified`                                         |
 
 </details>
 

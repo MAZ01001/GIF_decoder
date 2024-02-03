@@ -46,14 +46,14 @@
  */
 /**@enum {number} (not flags, can only be one)*/
 export const DisposalMethod=Object.freeze({
-    /**unspecified > replaces entire frame*/Replace:0,
-    /**do not dispose > combine with previous frame*/Combine:1,
-    /**restore to background > combine with first frame (background)*/RestoreBackground:2,
-    /**restore to previous > restore to previous undisposed frame state then combine*/RestorePrevious:3,
-    /**undefined > fallback to `Replace`*/UndefinedA:4,
-    /**undefined > fallback to `Replace`*/UndefinedB:5,
-    /**undefined > fallback to `Replace`*/UndefinedC:6,
-    /**undefined > fallback to `Replace`*/UndefinedD:7,
+    /**unspecified > do nothing with image*/Unspecified:0,
+    /**do not dispose > keep image to next frame*/DoNotDispose:1,
+    /**restore to background > frame area gets filled with background color (can be transparent)*/RestoreBackgroundColor:2,
+    /**restore to previous > dispose frame data after rendering*/RestorePrevious:3,
+    /**undefined > fallback to {@linkcode DisposalMethod.Unspecified}*/UndefinedA:4,
+    /**undefined > fallback to {@linkcode DisposalMethod.Unspecified}*/UndefinedB:5,
+    /**undefined > fallback to {@linkcode DisposalMethod.Unspecified}*/UndefinedC:6,
+    /**undefined > fallback to {@linkcode DisposalMethod.Unspecified}*/UndefinedD:7,
 });
 /**
  * ## Decodes a GIF into its components for rendering on a canvas
@@ -466,7 +466,7 @@ export const decodeGIF=async(gifURL,avgAlpha,progressCallback,fetchProgressCallb
                             top:0,
                             width:0,
                             height:0,
-                            disposalMethod:DisposalMethod.Replace,
+                            disposalMethod:DisposalMethod.Unspecified,
                             transparentColorIndex:null,
                             image:new ImageData(1,1,{colorSpace:"srgb"}),
                             plainTextData:null,

@@ -2093,65 +2093,52 @@ window.requestAnimationFrame(async function loop(time){
     if(global.frameIndex!==global.frameIndexLast){
         updateFrameInfo();
         updateTimeInfoFrame();
-        // TODO pixel aspect ratio
-
-        // TODO testing ! performance
-        // TODO ? only go back as far as frame 0 when first loop (when not infinite looping)
-        if(previousPlayback>0){
-            const queue=[global.frameIndex];
-            forLoop:for(
-                let i=(global.frameIndex===0?global.gifDecode.frames.length:global.frameIndex)-1;
-                global.frameIndex<(global.frameIndexLast+1)?i>global.frameIndex&&i<global.frameIndexLast:i<global.frameIndexLast;
-                --i<0&&(i+=global.gifDecode.frames.length)
-            )switch(global.gifDecode.frames[i].disposalMethod){
-                case DisposalMethod.UndefinedA://! fall through
-                case DisposalMethod.UndefinedB://! fall through
-                case DisposalMethod.UndefinedC://! fall through
-                case DisposalMethod.UndefinedD://! fall through
-                case DisposalMethod.Unspecified://! fall through
-                case DisposalMethod.DoNotDispose:
-                    queue.push[i];
-                break;
-                case DisposalMethod.RestoreBackgroundColor:
+        const queue=[global.frameIndex],
+            forwards=(previousPlayback===0?global.frameIndex>global.frameIndexLast:previousPlayback>0);
+        //? if performance is bad for reverse play → only check frames from frameIndex to 0 and not all the way around to frameIndexLast (if it's further "back" than 0)
+        forLoop:for(
+            let i=forwards
+                ?(global.frameIndex===0?global.gifDecode.frames.length:global.frameIndex)-1
+                :(global.frameIndex===global.gifDecode.frames.length-1?0:global.frameIndex+1)
+            ;forwards
+                ?(global.frameIndex<global.frameIndexLast?i<global.frameIndex||i>=global.frameIndexLast:i>=global.frameIndexLast)
+                :(global.frameIndex>global.frameIndexLast?i>global.frameIndex||i<=global.frameIndexLast:i<=global.frameIndexLast)
+            ;forwards
+                ?--i<0&&global.frameIndexLast!==0&&(i+=global.gifDecode.frames.length)
+                :++i>=global.gifDecode.frames.length&&global.frameIndexLast!==global.gifDecode.frames.length-1&&(i-=global.gifDecode.frames.length)
+        )switch(global.gifDecode.frames[i].disposalMethod){
+            case DisposalMethod.UndefinedA://! fall through
+            case DisposalMethod.UndefinedB://! fall through
+            case DisposalMethod.UndefinedC://! fall through
+            case DisposalMethod.UndefinedD://! fall through
+            case DisposalMethod.Unspecified://! fall through
+            case DisposalMethod.DoNotDispose:
+                queue.push[i];
+            break;
+            case DisposalMethod.RestoreBackgroundColor:
                 const f=global.gifDecode.frames[i];
-                    html.view.canvas.fillStyle=global.gifDecode.backgroundColorIndex==null?"#000":`rgb(${global.gifDecode.globalColorTable[global.gifDecode.backgroundColorIndex].join(' ')} / ${global.gifDecode.backgroundColorIndex===f.transparentColorIndex?'0':'1'})`;
-                    html.view.canvas.fillRect(f.left,f.top,f.width,f.height);
-                break forLoop;
-                case DisposalMethod.RestorePrevious:break;
-            }
-            for(let i=queue.length-1,f=global.gifDecode.frames[queue[i]];i>=0;--i>=0&&(f=global.gifDecode.frames[queue[i]])){
-                html.frame.canvas.clearRect(0,0,html.frame.htmlCanvas.width,html.frame.htmlCanvas.height);
-                html.frame.canvas.putImageData(f.image,f.left,f.top);
-                html.view.canvas.drawImage(html.frame.htmlCanvas,f.left,f.top,f.width,f.height,f.left,f.top,f.width,f.height);
-            }
-        }else
-        // TODO invert for reverse ~ paused depends ? from 0 or continue...
-
-        if(global.frameIndex>global.frameIndexLast)for(let i=global.frameIndexLast+1;i<=global.frameIndex;i++){
-            html.frame.canvas.clearRect(0,0,html.frame.htmlCanvas.width,html.frame.htmlCanvas.height);
-            html.frame.canvas.putImageData(global.gifDecode.frames[i].image,global.gifDecode.frames[i].left,global.gifDecode.frames[i].top);
-            // TODO disposal method (via offscreen canvas)
-            html.view.canvas.drawImage(html.frame.htmlCanvas,0,0);
-            if(i%100===0)await Promise.resolve();
-        }else{
-            //~ render from beginning (expect frame drops)
-            html.view.canvas.clearRect(0,0,html.view.htmlCanvas.width,html.view.htmlCanvas.height);
-            for(let i=0;i<=global.frameIndex;i++){
-                html.frame.canvas.clearRect(0,0,html.frame.htmlCanvas.width,html.frame.htmlCanvas.height);
-                html.frame.canvas.putImageData(global.gifDecode.frames[i].image,global.gifDecode.frames[i].left,global.gifDecode.frames[i].top);
-                // TODO disposal method (via offscreen canvas)
-                html.view.canvas.drawImage(html.frame.htmlCanvas,0,0);
-                if(i%100===0)await Promise.resolve();
-            }
+                html.view.canvas.fillStyle=global.gifDecode.backgroundColorIndex==null?"#000":`rgb(${global.gifDecode.globalColorTable[global.gifDecode.backgroundColorIndex].join(' ')} / ${global.gifDecode.backgroundColorIndex===f.transparentColorIndex?'0':'1'})`;
+                html.view.canvas.fillRect(f.left,f.top,f.width,f.height);
+            break forLoop;
+            case DisposalMethod.RestorePrevious:break;
         }
-        // TODO text extension
-        //? auto wraps to new line when grid width is reached (no fractional cells) and height does allow for it - otherwise end rendering even when there are characters left ~ pre calculate line breaks and string length
-        //? cell height is font size (px)
-        //? use CanvasRenderingContext2D.letterSpacing (can be negative) for cell width (px)
-        //? monospace font family
-        //? when reading characters <0x20 or >0xf7 render a space (0x20) instead
-        //? draw text background as one big box with background color (index into global color table) ~ or as outline ? font a little larger and letter spacing a little smaller and draw behind the text
-        //! check transparent color index of this frame as it also applies to the text extension for this frame
+        await Promise.resolve();
+        if(queue[queue.length-1]===global.frameIndexLast)queue.length--;
+        for(let i=queue.length-1,f=global.gifDecode.frames[queue[i]];i>=0;--i>=0&&(f=global.gifDecode.frames[queue[i]])){
+            html.frame.canvas.clearRect(0,0,html.frame.htmlCanvas.width,html.frame.htmlCanvas.height);
+            // TODO pixel aspect ratio
+            html.frame.canvas.putImageData(f.image,f.left,f.top);
+            html.view.canvas.drawImage(html.frame.htmlCanvas,f.left,f.top,f.width,f.height,f.left,f.top,f.width,f.height);
+            // TODO text extension
+            //? auto wraps to new line when grid width is reached (no fractional cells) and height does allow for it - otherwise end rendering even when there are characters left ~ pre calculate line breaks and string length
+            //? cell height is font size (px)
+            //? use CanvasRenderingContext2D.letterSpacing (can be negative) for cell width (px)
+            //? monospace font family
+            //? when reading characters <0x20 or >0xf7 render a space (0x20) instead
+            //? draw text background as one big box with background color (index into global color table) ~ or as outline ? font a little larger and letter spacing a little smaller and draw behind the text
+            //! check transparent color index of this frame as it also applies to the text extension for this frame
+            if((i&0x40)===0x40)await Promise.resolve();
+        }
         global.frameIndexLast=global.frameIndex;
     }
     updateTimeInfo();

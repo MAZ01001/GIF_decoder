@@ -983,6 +983,10 @@ const global=Object.seal({
     gifDecode:null,
     /** @type {number[]} array of start times of every frame in {@linkcode global.gifDecode.frames} (same indecies) */
     frameStarts:[],
+    /** Offscreen canvas for rendering {@linkcode PlainTextData} */
+    textCanvasObj:new OffscreenCanvas(0,0),
+    /** @type {OffscreenCanvasRenderingContext2D} 2d context of {@linkcode global.textCanvasObj} *///@ts-ignore better to throw an error when it's unexpectedly still null than have ?. everywhere
+    textCanvas:null,
     /** @type {{add(fps:number):void,sum:number}} last few frame times (fixed to size 8) */
     fps:new class{
         /** @param {number} size - size of the stored list */
@@ -1046,6 +1050,9 @@ const global=Object.seal({
     /** zooming for {@linkcode html.view.view} and {@linkcode html.frame.view} */
     scaler:0
 });
+
+//@ts-ignore checked for null inline
+if((global.textCanvas=global.textCanvasObj.getContext("2d"))==null)throw new Error("[GIF decoder] Couldn't get Text canvas 2D context");
 
 //~  _   _ _   _ _ _ _            __                  _   _
 //~ | | | | | (_) (_) |          / _|                | | (_)
@@ -1403,8 +1410,10 @@ const updateTimeInfo=()=>{
 //~                      | |
 //~                      |_|
 
-html.view.canvas.imageSmoothingEnabled=false;
-html.frame.canvas.imageSmoothingEnabled=false;
+global.textCanvas.imageSmoothingEnabled=(html.frame.canvas.imageSmoothingEnabled=(html.view.canvas.imageSmoothingEnabled=false));
+
+global.textCanvas.textAlign="left";//~ default "start"
+global.textCanvas.textBaseline="top";//~ default "alphabetic"
 
 html.import.preview.loading="eager";
 
@@ -1412,6 +1421,12 @@ html.root.style.setProperty("--offset-view-left","0px");
 html.root.style.setProperty("--offset-view-top","0px");
 html.root.style.setProperty("--canvas-width","0px");
 html.root.style.setProperty("--canvas-scaler","1.0");
+
+// TODO ↓ pixel aspect ratio
+// - CSS force height (also *scaler in CSS)
+// - calculate reverse of pixel aspect ratio to strech height instead of width
+// - add global variable for modified height (update when new GIF is loaded)
+// - do not modify canvas width/height ~ no change for rendering
 
 blockInput(true);
 
@@ -2125,18 +2140,41 @@ window.requestAnimationFrame(async function loop(time){
         await Promise.resolve();
         if(queue[queue.length-1]===global.frameIndexLast)queue.length--;
         for(let i=queue.length-1,f=global.gifDecode.frames[queue[i]];i>=0;--i>=0&&(f=global.gifDecode.frames[queue[i]])){
+            //~ override frame canvas and copy/add to GIF canvas
             html.frame.canvas.clearRect(0,0,html.frame.htmlCanvas.width,html.frame.htmlCanvas.height);
-            // TODO pixel aspect ratio
             html.frame.canvas.putImageData(f.image,f.left,f.top);
             html.view.canvas.drawImage(html.frame.htmlCanvas,f.left,f.top,f.width,f.height,f.left,f.top,f.width,f.height);
-            // TODO text extension
-            //? auto wraps to new line when grid width is reached (no fractional cells) and height does allow for it - otherwise end rendering even when there are characters left ~ pre calculate line breaks and string length
-            //? cell height is font size (px)
-            //? use CanvasRenderingContext2D.letterSpacing (can be negative) for cell width (px)
-            //? monospace font family
-            //? when reading characters <0x20 or >0xf7 render a space (0x20) instead
-            //? draw text background as one big box with background color (index into global color table) ~ or as outline ? font a little larger and letter spacing a little smaller and draw behind the text
-            //! check transparent color index of this frame as it also applies to the text extension for this frame
+            //~ text extension
+            if(f.plainTextData!=null){
+                global.textCanvasObj.width=f.plainTextData.width;
+                global.textCanvasObj.height=f.plainTextData.height;
+                global.textCanvas.font=`${f.plainTextData.charHeight}px "consolas", monospace`;
+                await Promise.resolve();
+                const{width}=global.textCanvas.measureText('#'),
+                    cols=Math.trunc(f.plainTextData.width/f.plainTextData.charWidth),
+                    rows=Math.trunc(f.plainTextData.height/f.plainTextData.charHeight),
+                    txt=f.plainTextData.text.replace(/[\x00-\x1F\xF8-\xFF]/g,' ');//~ only allow charaters between 0x20 and 0xF7
+                //@ts-ignore letterSpacing does indeed exist as a property of CanvasRenderingContext2D (of which OffscreenCanvasRenderingContext2D is based on)
+                global.textCanvas.letterSpacing=`${f.plainTextData.charWidth-width}px`;
+                //~ draw background box
+                if(f.transparentColorIndex!==f.plainTextData.backgroundColor){
+                    global.textCanvas.fillStyle=global.gifDecode.globalColorTable[f.plainTextData.backgroundColor].reduce((o,v)=>o+v.toString(0x10).padStart(2,'0'),'#');
+                    global.textCanvas.fillRect(0,0,global.textCanvasObj.width,global.textCanvasObj.height);
+                }else global.textCanvas.clearRect(0,0,global.textCanvasObj.width,global.textCanvasObj.height);
+                //~ draw/cutout text
+                if(f.transparentColorIndex===f.plainTextData.foregroundColor){
+                    if(f.transparentColorIndex!==f.plainTextData.backgroundColor){
+                        global.textCanvas.globalCompositeOperation="destination-out";
+                        for(let r=0;r<rows;r++)global.textCanvas.fillText(txt.substring(cols*r,cols*(r+2)),0,f.plainTextData.charHeight*r);
+                        global.textCanvas.globalCompositeOperation="source-over";
+                    }
+                }else{
+                    global.textCanvas.fillStyle=global.gifDecode.globalColorTable[f.plainTextData.foregroundColor].reduce((o,v)=>o+v.toString(0x10).padStart(2,'0'),'#');
+                    for(let r=0;r<rows;r++)global.textCanvas.fillText(txt.substring(cols*r,cols*(r+2)),0,f.plainTextData.charHeight*r);
+                }
+                //~ apply/draw to GIF canvas
+                html.view.canvas.drawImage(global.textCanvasObj,f.plainTextData.left,f.plainTextData.top);
+            }
             if((i&0x40)===0x40)await Promise.resolve();
         }
         global.frameIndexLast=global.frameIndex;

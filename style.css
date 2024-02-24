@@ -166,7 +166,22 @@ div#frameView{
 }
 div#gifView,
 div#frameView{
-    background-color: #000;
+    --checker-a: #EEE;
+    --checker-b: #FFF;
+    --checker-a: #888;
+    --checker-b: #AAA;
+    --checker-a: #222;
+    --checker-b: #333;
+    --checker-a: transparent;
+    --checker-b: transparent;
+    --checker-len: 10px;
+    background-image:
+        linear-gradient( 45deg, var(--checker-a) 25%,     transparent  25%),
+        linear-gradient(135deg, var(--checker-a) 25%,     transparent  25%),
+        linear-gradient( 45deg,     transparent  75%, var(--checker-a) 75%),
+        linear-gradient(135deg, var(--checker-b) 75%, var(--checker-a) 75%);
+    background-size: calc(2 * var(--checker-len)) calc(2 * var(--checker-len));
+    background-position: 0 0, var(--checker-len) 0, var(--checker-len) var(--checker-len), 0 var(--checker-len);
     padding: .5rem;
     /*~ border-radius: .5rem; (non-zero values) can result in subpixel aliasing */
     box-sizing: border-box;
@@ -242,7 +257,7 @@ span#frameFPS{
     top: .1rem;
     left: .2rem;
     color: #0A0;
-    font: small-caps small "consolas", monospace;
+    font: small "consolas", monospace;
     white-space: pre;
     text-shadow:
         1px 1px #000,

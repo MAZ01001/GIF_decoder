@@ -987,25 +987,34 @@ const global=Object.seal({
     textCanvasObj:new OffscreenCanvas(0,0),
     /** @type {OffscreenCanvasRenderingContext2D} 2d context of {@linkcode global.textCanvasObj} *///@ts-ignore better to throw an error when it's unexpectedly still null than have ?. everywhere
     textCanvas:null,
-    /** @type {{add(fps:number):void,sum:number}} last few frame times (fixed to size 8) */
+    /** Offscreen canvas for handling {@linkcode DisposalMethod.RestorePrevious} when seeking */
+    undisposedCanvasObj:new OffscreenCanvas(0,0),
+    /** @type {OffscreenCanvasRenderingContext2D} 2d context of {@linkcode global.undisposedCanvasObj} *///@ts-ignore better to throw an error when it's unexpectedly still null than have ?. everywhere
+    undisposedCanvas:null,
+    /** @type {number} index of last frame rendered to {@linkcode global.undisposedCanvas} */
+    undisposedIndex:0,
+    /** last few frame times (fixed to size 8) */
     fps:new class{
         /** @param {number} size - size of the stored list */
         constructor(size){
             this._arr_=new Float64Array(size);
-            this._pos_=0;
-            this._len_=0;
+            this._avg_=(this._len_=(this._pos_=0));
         }
-        /** @param {number} ft - new frame time (time in milliseconds from last to current frame) to add to the list */
+        /**
+         * ## Add a new frame time to the list (converted to FPS and pre-calculate rounded sum of all stored FPS)
+         * @param {number} ft - new frame time (time in milliseconds from last to current frame) to add to the list
+         * @returns {number} {@linkcode ft} (unchanged) for chaining
+         */
         add(ft){
             this._arr_[this._pos_=(this._pos_+1)%this._arr_.length]=0x3E8/ft;
             if(this._len_<this._arr_.length)this._len_++;
+            this._avg_=0;
+            for(let i=0;i<this._len_;i++)this._avg_+=this._arr_[i];
+            this._avg_=Math.round(this._avg_/this._arr_.length);
+            return ft;
         }
-        /** @returns {number} average of all stored frame times converted to FPS */
-        get sum(){
-            let sum=0;
-            for(let i=0;i<this._len_;i++)sum+=this._arr_[i];
-            return sum/this._arr_.length;
-        }
+        valueOf(){return this._avg_;}
+        toString(){return this._avg_.toString();}
     }(8),
     /** last frame timestamp of animation loop (not related to GIF) */
     lastAnimationFrameTime:0,
@@ -1052,7 +1061,9 @@ const global=Object.seal({
 });
 
 //@ts-ignore checked for null inline
-if((global.textCanvas=global.textCanvasObj.getContext("2d"))==null)throw new Error("[GIF decoder] Couldn't get Text canvas 2D context");
+if((global.textCanvas=global.textCanvasObj.getContext("2d"))==null)throw new Error("[GIF decoder] Couldn't get text-offscreen-canvas 2D context");
+//@ts-ignore checked for null inline
+if((global.undisposedCanvas=global.undisposedCanvasObj.getContext("2d"))==null)throw new Error("[GIF decoder] Couldn't get undisposed-offscreen-canvas 2D context");
 
 //~  _   _ _   _ _ _ _            __                  _   _
 //~ | | | | | (_) (_) |          / _|                | | (_)
@@ -1410,7 +1421,7 @@ const updateTimeInfo=()=>{
 //~                      | |
 //~                      |_|
 
-global.textCanvas.imageSmoothingEnabled=(html.frame.canvas.imageSmoothingEnabled=(html.view.canvas.imageSmoothingEnabled=false));
+global.undisposedCanvas.imageSmoothingEnabled=(global.textCanvas.imageSmoothingEnabled=(html.frame.canvas.imageSmoothingEnabled=(html.view.canvas.imageSmoothingEnabled=false)));
 
 global.textCanvas.textAlign="left";//~ default "start"
 global.textCanvas.textBaseline="top";//~ default "alphabetic"
@@ -1637,16 +1648,20 @@ html.import.abort.addEventListener("click",()=>html.import.menu.close(),{passive
 
 html.import.url.addEventListener("change",async()=>{
     "use strict";
+    html.import.file.value="";
     if((html.import.url.value=html.import.url.value.trim())===""){
         html.import.warn.textContent=(html.import.preview.src="");
-        html.import.confirm.disabled=!(html.import.file.disabled=false);
+        html.import.confirm.disabled=true;
         html.root.dispatchEvent(new CustomEvent("loadcancel"));
         return;
     }
     const check=await(async url=>{
         "use strict";
         if(url.startsWith("javascript:"))return null;
-        if(url.startsWith("data:"))return url.startsWith("data:image/")?/^data:image\/gif[;,]/.test(url):null;
+        if(url.startsWith("data:")){
+            if(!url.startsWith("data:image/"))return null;
+            if(!/^data:image\/gif[;,]/.test(url))return false;
+        }
         return await new Promise(/**@param {(value:boolean|null)=>void} E*/E=>{
             "use strict";
             /** @param {boolean} success */
@@ -1665,11 +1680,11 @@ html.import.url.addEventListener("change",async()=>{
     })(html.import.url.value);
     if(!(check??false))html.import.preview.src="";
     html.import.warn.textContent=check==null?"Given URL does not lead to an image":(check?"":"Given URL does not lead to a GIF image");
-    html.root.dispatchEvent(new CustomEvent((html.import.confirm.disabled=!(html.import.file.disabled=check??false))?"loadcancel":"loadpreview"));
+    html.root.dispatchEvent(new CustomEvent((html.import.confirm.disabled=!(check??false))?"loadcancel":"loadpreview"));
 },{passive:true});
 html.import.file.addEventListener("change",async()=>{
     "use strict";
-    html.import.url.disabled=false;
+    html.import.url.value="";
     html.import.preview.src="";
     html.import.confirm.disabled=true;
     if(html.import.file.files==null||html.import.file.files.length===0){
@@ -1693,22 +1708,28 @@ html.import.file.addEventListener("change",async()=>{
         html.root.dispatchEvent(new CustomEvent("loadcancel"));
         return;
     }
-    html.import.url.disabled=true;
     html.import.warn.textContent="";
     html.import.preview.src=URL.createObjectURL(html.import.file.files[0]);
     html.import.confirm.disabled=false;
     html.root.dispatchEvent(new CustomEvent("loadpreview"));
 },{passive:true});
 
-//~ load & decode GIF (log fetch progress & show visual decoding progress), update/reset variables/UI, and render first frame (paused) or open inport menu for error feedback
+// FAV load & decode GIF (log fetch progress & show visual decoding progress), update/reset variables/UI, and render first frame (paused) or open inport menu for error feedback
 
 html.import.confirm.addEventListener("click",async()=>{
     "use strict";
     const fileSrc=html.import.preview.src,
         fileName=html.import.url.disabled?html.import.file.files?.[0]?.name:html.import.url.value.match(/^[^#?]+?\/?(.+?\.gif)(?:[#?]|$)/i)?.[0];
-    blockInput(true);
     html.import.menu.close();
+    //~ pause, auto size to window, and reset pan & zoom
     if(global.playback!==0)html.controls.pause.click();
+    if(html.view.fitWindow.dataset.toggle==="1")html.view.fitWindow.click();
+    if(html.frame.fitWindow.dataset.toggle==="1")html.frame.fitWindow.click();
+    setCanvasOffset(html.view.canvasStyle,0,0);
+    setCanvasOffset(html.frame.canvasStyle,0,0);
+    html.root.style.setProperty("--canvas-scaler","1");
+    global.scaler=0;
+    blockInput(true);
     html.loading.gif.classList.remove("done");
     html.loading.frame.classList.remove("done");
     html.loading.gifProgress.removeAttribute("value");
@@ -1719,14 +1740,14 @@ html.import.confirm.addEventListener("click",async()=>{
     html.root.dispatchEvent(new CustomEvent("loadstart"));
     decodeGIF(fileSrc,undefined,async(percentageRead,frameIndex,frame,framePos,gifSize)=>{
         "use strict";
+        // TODO draw correctly to GIF canvas
         if(frameIndex===0){
             //~ only on first call
-            if(html.view.fitWindow.dataset.toggle==="1")html.view.fitWindow.click();
-            if(html.frame.fitWindow.dataset.toggle==="1")html.frame.fitWindow.click();
-            html.frame.htmlCanvas.width=(html.view.htmlCanvas.width=gifSize[0]);
-            html.frame.htmlCanvas.height=(html.view.htmlCanvas.height=gifSize[1]);
+            global.undisposedCanvasObj.width=(html.frame.htmlCanvas.width=(html.view.htmlCanvas.width=gifSize[0]));
+            global.undisposedCanvasObj.height=(html.frame.htmlCanvas.height=(html.view.htmlCanvas.height=gifSize[1]));
             html.view.canvas.clearRect(0,0,html.view.htmlCanvas.width,html.view.htmlCanvas.height);
             html.frame.canvas.clearRect(0,0,html.frame.htmlCanvas.width,html.frame.htmlCanvas.height);
+            global.undisposedCanvas.clearRect(0,0,global.undisposedCanvasObj.width,global.undisposedCanvasObj.height);
         }
         html.loading.gifProgress.value=(html.loading.frameProgress.value=percentageRead);
         html.loading.gifText.textContent=(html.loading.frameText.textContent=`Frame ${String(frameIndex+1).padStart(2,'0')} | ${(percentageRead*0x64).toFixed(2).padStart(5,'0')}%`);
@@ -1782,15 +1803,27 @@ html.import.confirm.addEventListener("click",async()=>{
         updateFrameInfo();
         updateTimeInfoFrame();
         //~ render first frame to every canvas
-        html.view.canvas.clearRect(0,0,html.view.htmlCanvas.width,html.view.htmlCanvas.height);
-        html.view.canvas.putImageData(gif.frames[0].image,gif.frames[0].left,gif.frames[0].top);
         html.frame.canvas.clearRect(0,0,html.frame.htmlCanvas.width,html.frame.htmlCanvas.height);
         html.frame.canvas.putImageData(gif.frames[0].image,gif.frames[0].left,gif.frames[0].top);
-        //~ reset pan & zoom
-        setCanvasOffset(html.view.canvasStyle,0,0);
-        setCanvasOffset(html.frame.canvasStyle,0,0);
-        global.scaler=0;
-        html.root.style.setProperty("--canvas-scaler","1");
+        if(gif.backgroundColorIndex!==null){
+            html.view.canvas.fillStyle=(global.undisposedCanvas.fillStyle=gif.globalColorTable[gif.backgroundColorIndex].reduce((o,v)=>o+v.toString(0x10).padStart(2,'0'),'#'));
+            html.view.canvas.fillRect(0,0,html.view.htmlCanvas.width,html.view.htmlCanvas.height);
+            global.undisposedCanvas.fillRect(0,0,global.undisposedCanvasObj.width,global.undisposedCanvasObj.height);
+        }else{
+            html.view.canvas.clearRect(0,0,html.view.htmlCanvas.width,html.view.htmlCanvas.height);
+            global.undisposedCanvas.clearRect(0,0,global.undisposedCanvasObj.width,global.undisposedCanvasObj.height);
+        }
+        html.view.canvas.drawImage(html.frame.htmlCanvas,0,0);
+        switch(gif.frames[0].disposalMethod){
+            case DisposalMethod.UndefinedA://! fall through
+            case DisposalMethod.UndefinedB://! fall through
+            case DisposalMethod.UndefinedC://! fall through
+            case DisposalMethod.UndefinedD://! fall through
+            case DisposalMethod.Unspecified://! fall through
+            case DisposalMethod.DoNotDispose:global.undisposedCanvas.drawImage(html.view.htmlCanvas,0,0);break;
+            case DisposalMethod.RestoreBackgroundColor:break;
+            case DisposalMethod.RestorePrevious:break;
+        }
         //~ end loading
         blockInput(false);
         html.controls.pause.focus();
@@ -1985,7 +2018,7 @@ html.loop.toggle.addEventListener("click",()=>{
         const canvasStyle=urlParam.gifReal?html.view.canvasStyle:html.frame.canvasStyle;
         if(urlParam.pos[0]!==0||urlParam.pos[1]!==0)setCanvasOffset(canvasStyle,...urlParam.pos);
         //~ wait for one cycle
-        //? await new Promise(E=>setTimeout(E,0));
+        await new Promise(E=>setTimeout(E,0));
         if(urlParam.zoom!==0){
             const previousWidth=Number.parseFloat(canvasStyle.width),
                 previousHeight=Number.parseFloat(canvasStyle.height);
@@ -2001,7 +2034,7 @@ html.loop.toggle.addEventListener("click",()=>{
                 )*.01)
             ));
             //~ wait for one cycle
-            //? await new Promise(E=>setTimeout(E,0));
+            await new Promise(E=>setTimeout(E,0));
             setCanvasOffset(
                 canvasStyle,
                 (Number.parseFloat(canvasStyle.width)*global.panLeft)/previousWidth,
@@ -2015,14 +2048,24 @@ html.loop.toggle.addEventListener("click",()=>{
 //~ animation loop
 window.requestAnimationFrame(async function loop(time){
     "use strict";
-    if(time===global.lastAnimationFrameTime){window.requestAnimationFrame(loop);return;}
+    if(time===global.lastAnimationFrameTime){
+        window.requestAnimationFrame(loop);
+        return;
+    }
     const delta=time-global.lastAnimationFrameTime,
         previousPlayback=global.playback;
     global.fps.add(delta);
-    html.view.fps.textContent=(html.frame.fps.textContent=`FPS ${global.fps.sum.toFixed(0).padStart(3,' ')}`);
+    html.view.fps.textContent=(html.frame.fps.textContent=`FPS ${global.fps.toString().padStart(3,' ')}`);
+    // TODO make calculating frame index/time and rendering into functions for the GIFdecodeModule.js and the GIF decode section at the beginning of this file
+    // TODO >> seekGIFplayback(GIF,loopIndex,frameIndex,timestamp,seekTime,skipUserInput?)=>[newLoopIndex,newFrameIndex,newTimestamp,paused]
+    // TODO >> makeRenderQueue(GIF,frameIndexCurrent,frameIndexNew)=>[render queue with frame indecies in reverse order (render [0] last),first action(fill color/clear/nothing/restore previous)] !when overriting "restore previous" canvas check if [0] is restore previous and if then do not safe it in that canvas and only render to screen
+    // FIXME save only area that get overwriten by a disposed frame and restore it before drawing the next frame (and posibly save again) - resize canvas to frame size and 1*1 if not used
+    // FIXME reverting to bg fills gb-color only where the frame areas where not entire GIF (or clear if no bg-color is set)
+    // FIXME transparency is only for frame images (which are already processed with transparency)
+    // TODO use global.undisposedCanvas global.undisposedIndex to save and restore frame data
     //~ calculate time, frame, and loop amount (with user input)
     let seek=global.playback*delta;
-    if(seek<0) do{//~ reverse seek
+    if(seek<0)do{//~ reverse seek
         let i=global.frameIndex,
             f=global.gifDecode.frames[i];
         if(f.userInputDelayFlag&&(f.delayTime===0&&!(i===global.skipFrame||global.userInputLock)))break;
@@ -2061,7 +2104,7 @@ window.requestAnimationFrame(async function loop(time){
                 seek+=f.delayTime;
             }
         }while(true);
-    }while(false);else if(seek>0) do{//~ forward seek
+    }while(false);else if(seek>0)do{//~ forward seek
         let i=global.frameIndex,
             f=global.gifDecode.frames[i];
         if(f.userInputDelayFlag&&(f.delayTime===0&&!(i===global.skipFrame||global.userInputLock)))break;
@@ -2109,16 +2152,16 @@ window.requestAnimationFrame(async function loop(time){
         updateFrameInfo();
         updateTimeInfoFrame();
         const queue=[global.frameIndex],
-            forwards=(previousPlayback===0?global.frameIndex>global.frameIndexLast:previousPlayback>0);
+            seekForwards=(previousPlayback===0?global.frameIndex>global.frameIndexLast:previousPlayback>0);
         //? if performance is bad for reverse play → only check frames from frameIndex to 0 and not all the way around to frameIndexLast (if it's further "back" than 0)
         forLoop:for(
-            let i=forwards
+            let i=seekForwards
                 ?(global.frameIndex===0?global.gifDecode.frames.length:global.frameIndex)-1
                 :(global.frameIndex===global.gifDecode.frames.length-1?0:global.frameIndex+1)
-            ;forwards
-                ?(global.frameIndex<global.frameIndexLast?i<global.frameIndex||i>=global.frameIndexLast:i>=global.frameIndexLast)
-                :(global.frameIndex>global.frameIndexLast?i>global.frameIndex||i<=global.frameIndexLast:i<=global.frameIndexLast)
-            ;forwards
+            ;seekForwards
+                ?(global.frameIndex>global.frameIndexLast?i>=global.frameIndexLast:(i<global.frameIndex||i>=global.frameIndexLast))
+                :(global.frameIndex<global.frameIndexLast?i<=global.frameIndexLast:(i>global.frameIndex||i<=global.frameIndexLast))
+            ;seekForwards
                 ?--i<0&&global.frameIndexLast!==0&&(i+=global.gifDecode.frames.length)
                 :++i>=global.gifDecode.frames.length&&global.frameIndexLast!==global.gifDecode.frames.length-1&&(i-=global.gifDecode.frames.length)
         )switch(global.gifDecode.frames[i].disposalMethod){
@@ -2127,6 +2170,7 @@ window.requestAnimationFrame(async function loop(time){
             case DisposalMethod.UndefinedC://! fall through
             case DisposalMethod.UndefinedD://! fall through
             case DisposalMethod.Unspecified://! fall through
+            //HY_ ######## TODO
             case DisposalMethod.DoNotDispose:
                 queue.push[i];
             break;
@@ -2153,7 +2197,7 @@ window.requestAnimationFrame(async function loop(time){
                 const{width}=global.textCanvas.measureText('#'),
                     cols=Math.trunc(f.plainTextData.width/f.plainTextData.charWidth),
                     rows=Math.trunc(f.plainTextData.height/f.plainTextData.charHeight),
-                    txt=f.plainTextData.text.replace(/[\x00-\x1F\xF8-\xFF]/g,' ');//~ only allow charaters between 0x20 and 0xF7
+                    txt=f.plainTextData.text.replace(/[^\x20-\xF7]/g,' ');//~ only allow ASCII charaters between 0x20 and 0xF7
                 //@ts-ignore letterSpacing does indeed exist as a property of CanvasRenderingContext2D (of which OffscreenCanvasRenderingContext2D is based on)
                 global.textCanvas.letterSpacing=`${f.plainTextData.charWidth-width}px`;
                 //~ draw background box

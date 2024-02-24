@@ -13,30 +13,27 @@
     <div id="box">
         <h1 id="gifHeading">GIF<span class="hint" title="Only supports GIF files with version &quot;GIF89a&quot;">*</span> decoder</h1>
         <!-- TODO
-            ! warning BEFORE decoding GIFs over ~ 10MiB (also check MIME type when loading)
+            ! warning BEFORE decoding GIFs over ~ 10MiB
             ~ timeTickmarks indicate frame timestamps ~ ignore for user-input-flags
             ~ use offscreen canvas for special disposal method case (3)
             ? auto hide gifView buttons after 1sec no mouse movement (js mouse move) or mouse leaves div (css hover)
-            ! speed controls (variable/code already supports this - normal and reverse) ~ left of "Loop override" fieldset
+            ! speed controls (variable/code already supports this - normal and reverse) ~ right (inside) of playback controls
             ? useless/verbose stats
             ? (AppExt) raw bytes as hex string (textarea) ~ instead of copy button ? both
-            ~ gif and frame canvas have same size, pan, and zoom
             ? maybe add scroll shadows ↓
             ?>> CSS style   https://github.com/MAZ01001/MAZ01001.github.io/blob/master/index.html#L48-L60
             ?>> JS function https://github.com/MAZ01001/MAZ01001.github.io/blob/master/index.html#L250-L270
             ?>> JS event    https://github.com/MAZ01001/MAZ01001.github.io/blob/master/index.html#L318-L320
-            ! force-clear-last-frame flag for URL ~ toggle button in gif/frame view (default on)
+            ! force-clear-last-frame flag for URL & toggle button left (inside) of playback controls (default off)
             ? add [byte position] to title ~ comment, application/unkown extension, and global/local color table
-            ~ frames with `0` delay/timeout count nothing to the time total
-            ! use the background color index to color the background of the HMTL canvas (fallback to #000 if not available)
             ? new canvas button to change canvas background/-color
-            ?>> dialog menu with some options and a live preview
-            ?>> pause playback and use screenshoot of canvas as preview (slider for screenshoot opacity | image above inputs)
-            ?>> toggle to use backgroud color index (disabled in OFF state if not available and disables all following inputs if toggled ON)
-            ?>> color input for background color
-            ?>> checkbox to toggle checker texture and enable checker color (second color input)
-            ?>> number input for checker size (~ 1/10 rem)
-            ? add `avgAlpha` (`decodeGIF`) to `urlParam`
+            - >> dialog menu with some options and a live preview
+            - >> pause playback and use screenshoot of canvas as preview (slider for screenshoot opacity | image above inputs)
+            - >> toggle to use backgroud color index (disabled in OFF state if not available and disables all following inputs if toggled ON)
+            - >> color input for background color
+            - >> checkbox to toggle checker texture and enable checker color (second color input)
+            - >> number input for checker size (~ 1/10 rem)
+            ! add `avgAlpha` (`decodeGIF`) to `urlParam`
         -->
         <div id="gifView" title="GIF render canvas">
             <canvas id="htmlCanvas">Your browser does not support the HTML canvas element</canvas>

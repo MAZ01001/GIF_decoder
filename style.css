@@ -544,15 +544,24 @@ input#importConfirm:disabled{color: #0A0;}
 /*~  `--. \/ __| '__/ _ \| | | '_ \ / _` | '__| */
 /*~ /\__/ / (__| | | (_) | | | |_) | (_| | |    */
 /*~ \____/ \___|_|  \___/|_|_|_.__/ \__,_|_|    */
-::-webkit-scrollbar{width:.8rem;height:.8rem;}
+@supports not selector(::-webkit-scrollbar){
+    *{
+        scrollbar-width: thin;
+        scrollbar-color: #0A07 transparent;
+    }
+    *:hover{scrollbar-color: #0A0 transparent;}
+}
+::-webkit-scrollbar{
+    width:.8rem;
+    height:.8rem;
+}
 ::-webkit-scrollbar-thumb:vertical:window-inactive{border-right-style:dashed;}
 ::-webkit-scrollbar-thumb:horizontal:window-inactive{border-bottom-style:dashed;}
 ::-webkit-scrollbar-thumb:vertical{
     background-color:#0000;
-    border-right:.2rem solid #0A0F;
+    border-right:.3rem solid #0A0F;
     border-radius:0;
 }
-::-webkit-scrollbar-thumb:hover:vertical,
 :hover::-webkit-scrollbar-thumb:vertical{
     background-color:#000F;
     box-shadow:inset .4rem 0 .4rem 0 #0A0F;
@@ -562,10 +571,9 @@ input#importConfirm:disabled{color: #0A0;}
 }
 ::-webkit-scrollbar-thumb:horizontal{
     background-color:#0000;
-    border-bottom:.2rem solid #0A0F;
+    border-bottom:.3rem solid #0A0F;
     border-radius:0;
 }
-::-webkit-scrollbar-thumb:hover:horizontal,
 :hover::-webkit-scrollbar-thumb:horizontal{
     background-color:#000F;
     box-shadow:inset 0 .4rem .4rem 0 #0A0F;
@@ -573,10 +581,12 @@ input#importConfirm:disabled{color: #0A0;}
     border-top-left-radius:1rem;
     border-top-right-radius:1rem;
 }
-::-webkit-scrollbar-thumb:hover:vertical,
-:hover::-webkit-scrollbar-thumb:hover:vertical{box-shadow:inset .4rem 0 .4rem 0 #0F0F;}
-::-webkit-scrollbar-thumb:hover:horizontal,
-:hover::-webkit-scrollbar-thumb:hover:horizontal{box-shadow:inset 0 .4rem .4rem 0 #0F0F;}
+::-webkit-scrollbar-thumb:hover:vertical{box-shadow:inset .4rem 0 .4rem 0 #0F0F;}
+::-webkit-scrollbar-thumb:hover:horizontal{box-shadow:inset 0 .4rem .4rem 0 #0F0F;}
 ::-webkit-scrollbar-track,
 ::-webkit-scrollbar-track-piece,
-::-webkit-scrollbar-corner{display:none;background-color:#0000;}
+::-webkit-scrollbar-button,
+::-webkit-scrollbar-corner{
+    display:none;
+    background-color:#0000;
+}

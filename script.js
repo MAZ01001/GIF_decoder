@@ -54,10 +54,10 @@
  */
 /**@enum {number} (not flags, can only be one)*/
 const DisposalMethod=Object.freeze({
-    /**unspecified > do nothing with image*/Unspecified:0,
-    /**do not dispose > keep image to next frame*/DoNotDispose:1,
-    /**restore to background > frame area gets filled with background color (can be transparent)*/RestoreBackgroundColor:2,
-    /**restore to previous > dispose frame data after rendering*/RestorePrevious:3,
+    /**unspecified > do nothing (default to {@linkcode DisposalMethod.DoNotDispose})*/Unspecified:0,
+    /**do not dispose > keep image / combine with next frame*/DoNotDispose:1,
+    /**restore to background color > frame area gets filled with background color (use transparent (clear area) if global color table is not available)*/RestoreBackgroundColor:2,
+    /**restore to previous > dispose frame data after rendering (revealing what was there before)*/RestorePrevious:3,
     /**undefined > fallback to {@linkcode DisposalMethod.Unspecified}*/UndefinedA:4,
     /**undefined > fallback to {@linkcode DisposalMethod.Unspecified}*/UndefinedB:5,
     /**undefined > fallback to {@linkcode DisposalMethod.Unspecified}*/UndefinedC:6,
@@ -610,6 +610,8 @@ const html=Object.freeze({
         /** @type {HTMLInputElement} Button to go to the last frame of the GIF (and pause playback) *///@ts-ignore element does exist in DOM
         seekEnd:document.getElementById("seekEnd")
     }),
+    /** @type {HTMLInputElement} (number) multiplier for playback speed [`0` to `100`] - use class `stop` when it's `0` (right of {@linkcode html.controls}) *///@ts-ignore element does exist in DOM
+    speed:document.getElementById("speed"),
     /** User input area (under {@linkcode html.controls}) */
     userInput:Object.freeze({
         /** @type {HTMLFieldSetElement} Container for user input controls (highlight via class `waiting` for user input and class `infinity` when infinite timeout) *///@ts-ignore element does exist in DOM
@@ -941,8 +943,8 @@ const urlParam=(()=>{
         frameText:(args.get("frameText")??"0")!=="0",
         /** If the {@linkcode html.import.menu} should be opened - default `0` (closed) */
         import:(args.get("import")??"0")!=="0",
-        /** If the GIF should be playing - default `0` (paused) */
-        play:(args.get("play")??"0")!=="0",
+        /** If the GIF should be playing and how fast (clamped to `-100` to `100`) - default `0` (paused) */
+        play:Number.isNaN(tmpNum=Number(args.get("play")??"0"))?1:(tmpNum<-100?-100:(tmpNum>100?100:tmpNum)),
         /** The frame index (zero-based) to start with (if out of bounds use first frame) - default `0` (first frame) */
         f:Number.isSafeInteger(tmpNum=Number(args.get("f")))&&tmpNum>=0?tmpNum:0,
         /** If the {@linkcode html.userInput.lock} should be toggled on - default `0` (OFF) */
@@ -987,12 +989,12 @@ const global=Object.seal({
     textCanvasObj:new OffscreenCanvas(0,0),
     /** @type {OffscreenCanvasRenderingContext2D} 2d context of {@linkcode global.textCanvasObj} *///@ts-ignore better to throw an error when it's unexpectedly still null than have ?. everywhere
     textCanvas:null,
-    /** Offscreen canvas for handling {@linkcode DisposalMethod.RestorePrevious} when seeking */
+    /** Offscreen canvas for handling {@linkcode DisposalMethod.RestorePrevious} */
     undisposedCanvasObj:new OffscreenCanvas(0,0),
     /** @type {OffscreenCanvasRenderingContext2D} 2d context of {@linkcode global.undisposedCanvasObj} *///@ts-ignore better to throw an error when it's unexpectedly still null than have ?. everywhere
     undisposedCanvas:null,
-    /** @type {number} index of last frame rendered to {@linkcode global.undisposedCanvas} */
-    undisposedIndex:0,
+    /** @type {[number,number]} (sealed array) `[left, top]` position in GIF of the {@linkcode global.undisposedCanvas} */
+    undisposedPos:Object.seal([0,0]),
     /** last few frame times (fixed to size 8) */
     fps:new class{
         /** @param {number} size - size of the stored list */
@@ -1024,6 +1026,8 @@ const global=Object.seal({
     totalTime:0,
     /** @type {0|1|-1} `0` paused | `1` playing | `-1` reverse (also see {@linkcode html.controls.container} class) */
     playback:0,
+    /** @type {number} speed muliplier for {@linkcode global.playback} [`0` to `100`] (from {@linkcode html.speed}) */
+    speed:1,
     /** if {@linkcode html.userInput.lock} is ON */
     userInputLock:false,
     /** if {@linkcode html.userInput.area} has class `waiting` */
@@ -1161,6 +1165,7 @@ const blockInput=state=>{
     html.controls.play.disabled=state;
     html.controls.seekNext.disabled=state;
     html.controls.seekStart.disabled=state;
+    html.speed.disabled=state;
     html.userInput.input.disabled=state||global.userInputLock;
     html.userInput.lock.disabled=state;
     html.loop.toggle.disabled=state||global.loops===Infinity;
@@ -1208,11 +1213,7 @@ const gcd=(a,b)=>{
  */
 const genHTMLColorGrid=(colorTable,global,colorIndex)=>{
     "use strict";
-    if(colorTable.length===0){
-        const span=document.createElement("span");
-        span.textContent=`Empty list (see ${global?"global":"local"} color table)`;
-        return[span];
-    }
+    if(colorTable.length===0)return[Object.assign(document.createElement("span"),{textContent:`Empty list (see ${global?"global":"local"} color table)`})];
     return colorTable.map((color,i)=>{
         "use strict";
         const input=document.createElement("input"),
@@ -1240,19 +1241,12 @@ const genHTMLColorGrid=(colorTable,global,colorIndex)=>{
  */
 const genHTMLAppExtList=appExt=>{
     "use strict";
-    if(appExt.length===0){
-        const span=document.createElement("span");
-        span.textContent="Empty list";
-        return[span];
-    }
+    if(appExt.length===0)return[Object.assign(document.createElement("span"),{textContent:"Empty list"})];
     return appExt.map((ext,i)=>{
         "use strict";
-        const legend=document.createElement("legend"),
-            spanDesc=document.createElement("span"),
+        const spanDesc=document.createElement("span"),
             input=document.createElement("input"),
             fieldset=document.createElement("fieldset");
-        legend.title="Application-Extension identifier (8 characters) and authentication code (3 characters)";
-        legend.textContent=`#${i} ${ext.identifier}${ext.authenticationCode}`;
         spanDesc.title="Description";
         switch(ext.identifier+ext.authenticationCode){
             case"NETSCAPE2.0":spanDesc.textContent=`loops the GIF ${(loop=>loop===0?"0 (infinite)":loop.toString(0xA))(ext.data[1]+(ext.data[2]<<8))} times`;break;
@@ -1267,7 +1261,12 @@ const genHTMLAppExtList=appExt=>{
             const text=ext.data.reduce((o,v)=>o+String.fromCharCode(v),"");
             navigator.clipboard.writeText(text).catch(reason=>console.warn("Couldn't copy %i Bytes of text, reason: %O",text.length,reason));
         },{passive:true});
-        fieldset.append(legend,spanDesc," ",input);
+        fieldset.append(
+            Object.assign(document.createElement("legend"),{
+                title:"Application-Extension identifier (8 characters) and authentication code (3 characters)",
+                textContent:`#${i} ${ext.identifier}${ext.authenticationCode}`
+            }),spanDesc," ",input
+        );
         return fieldset;
     });
 };
@@ -1278,19 +1277,18 @@ const genHTMLAppExtList=appExt=>{
  */
 const genHTMLCommentList=comments=>{
     "use strict";
-    if(comments.length===0){
-        const span=document.createElement("span");
-        span.textContent="Empty list";
-        return[span];
-    }
+    if(comments.length===0)return[Object.assign(document.createElement("span"),{textContent:"Empty list"})];
     return comments.map((comment,i)=>{
         "use strict";
-        const textarea=document.createElement("textarea"),
-            div=document.createElement("div");
-        textarea.readOnly=true;
-        textarea.textContent=comment[1];
+        const div=document.createElement("div");
         div.title=`Comment #${i} found in GIF file at ${comment[0]}`;
-        div.append(`#${i} at ${comment[0]}`,textarea);
+        div.append(
+            `#${i} at ${comment[0]}`,
+            Object.assign(document.createElement("textarea"),{
+                readOnly:true,
+                textContent:comment[1],
+            })
+        );
         return div;
     });
 };
@@ -1301,15 +1299,10 @@ const genHTMLCommentList=comments=>{
  */
 const getHTMLUnExtList=unExt=>{
     "use strict";
-    if(unExt.length===0){
-        const span=document.createElement("span");
-        span.textContent="Empty list";
-        return[span];
-    }
+    if(unExt.length===0)return[Object.assign(document.createElement("span"),{textContent:"Empty list"})];
     return unExt.map((ext,i)=>{
         "use strict";
         const input=document.createElement("input"),
-            small=document.createElement("small"),
             span=document.createElement("span"),
             div=document.createElement("div");
         input.type="button";
@@ -1321,8 +1314,10 @@ const getHTMLUnExtList=unExt=>{
             const text=ext[1].reduce((o,v)=>o+String.fromCharCode(v),"");
             navigator.clipboard.writeText(text).catch(reason=>console.warn("Couldn't copy %i Bytes of text, reason: %O",text.length,reason));
         },{passive:true});
-        small.textContent=`(0x${ext[0].toString(0x10).toUpperCase().padStart(2,'0')})`;
-        span.append(`#${i} ${String.fromCharCode(ext[0])} `,small);
+        span.append(
+            `#${i} ${String.fromCharCode(ext[0])} `,
+            Object.assign(document.createElement("small"),{textContent:`(0x${ext[0].toString(0x10).toUpperCase().padStart(2,'0')})`})
+        );
         div.title="(Unknown) Extension identifier (1 character)";
         div.append(span,input);
         return div;
@@ -1346,15 +1341,15 @@ const updateFrameInfo=()=>{
     html.frame.time.textContent=`${f.delayTime} ms`;
     html.frame.userInputFlag.checked=f.userInputDelayFlag;
     html.frame.disposalMethod.replaceChildren(...(()=>{switch(f.disposalMethod){
-        case 0:return["[0 unspecified]",document.createElement("br"),"replaces entire frame"];
-        case 1:return["[1 do not dispose]",document.createElement("br"),"combine with previous frame"];
-        case 2:return["[2 restore to background]",document.createElement("br"),"combine with background (first frame)"];
-        case 3:return["[3 restore to previous]",document.createElement("br"),"restore to previous undisposed frame state then combine"];
-        case 4:return["[4 undefined]",document.createElement("br"),"(fallback to 0) replaces entire frame"];
-        case 5:return["[5 undefined]",document.createElement("br"),"(fallback to 0) replaces entire frame"];
-        case 6:return["[6 undefined]",document.createElement("br"),"(fallback to 0) replaces entire frame"];
-        case 7:return["[7 undefined]",document.createElement("br"),"(fallback to 0) replaces entire frame"];
-        default:return["ERROR"];
+        case DisposalMethod.Unspecified:           return[`[${DisposalMethod.Unspecified            } unspecified]`,            document.createElement("br"),"do nothing (keep image / combine with next frame)"];
+        case DisposalMethod.DoNotDispose:          return[`[${DisposalMethod.DoNotDispose           } do not dispose]`,         document.createElement("br"),"keep image / combine with next frame"];
+        case DisposalMethod.RestoreBackgroundColor:return[`[${DisposalMethod.RestoreBackgroundColor } restore to background]`,  document.createElement("br"),"frame area gets filled with background color"];
+        case DisposalMethod.RestorePrevious:       return[`[${DisposalMethod.RestorePrevious        } restore to previous]`,    document.createElement("br"),"dispose frame data after rendering (revealing what was there before)"];
+        case DisposalMethod.UndefinedA:            return[`[${DisposalMethod.UndefinedA             } undefined]`,              document.createElement("br"),"(fallback to [0 unspecified]) do nothing (keep image / combine with next frame)"];
+        case DisposalMethod.UndefinedB:            return[`[${DisposalMethod.UndefinedB             } undefined]`,              document.createElement("br"),"(fallback to [0 unspecified]) do nothing (keep image / combine with next frame)"];
+        case DisposalMethod.UndefinedC:            return[`[${DisposalMethod.UndefinedC             } undefined]`,              document.createElement("br"),"(fallback to [0 unspecified]) do nothing (keep image / combine with next frame)"];
+        case DisposalMethod.UndefinedD:            return[`[${DisposalMethod.UndefinedD             } undefined]`,              document.createElement("br"),"(fallback to [0 unspecified]) do nothing (keep image / combine with next frame)"];
+        default:                                   return[`[${f.disposalMethod} ERROR]`,document.createElement("br"),"unknown disposal method"];
     }})());
     html.frame.frameReserved.textContent=`${f.reserved} (0b${f.reserved.toString(2).padStart(2,'0')})`;
     html.frame.frameGCReserved.textContent=`${f.GCreserved} (0b${f.GCreserved.toString(2).padStart(3,'0')})`;
@@ -1422,6 +1417,7 @@ const updateTimeInfo=()=>{
 //~                      |_|
 
 global.undisposedCanvas.imageSmoothingEnabled=(global.textCanvas.imageSmoothingEnabled=(html.frame.canvas.imageSmoothingEnabled=(html.view.canvas.imageSmoothingEnabled=false)));
+global.undisposedCanvas.globalCompositeOperation="copy";//~ default "source-over"
 
 global.textCanvas.textAlign="left";//~ default "start"
 global.textCanvas.textBaseline="top";//~ default "alphabetic"
@@ -1488,7 +1484,7 @@ html.view.fitWindow.addEventListener("click",()=>{
         html.view.fitWindow.dataset.toggle="1";
         html.view.fitWindow.value="🞑";
         html.view.htmlCanvas.classList.add("real");
-        html.view.view.title="Drag with left mouse button to move image, reset position with double left click, zoom with mouse wheel (faster with shift and slower with alt), and reset zoom by clicking the mouse wheel";
+        html.view.view.title="Drag with left mouse button to move image (zooms with shift and moves drag origin with ctrl), reset position with double left click, zoom with mouse wheel (faster with shift and slower with alt), and reset zoom by clicking the mouse wheel";
         html.root.style.setProperty("--canvas-width",`${html.view.htmlCanvas.width}px`);
     }else{
         html.view.fitWindow.dataset.toggle="0";
@@ -1503,7 +1499,7 @@ html.frame.fitWindow.addEventListener("click",()=>{
         html.frame.fitWindow.dataset.toggle="1";
         html.frame.fitWindow.value="🞑";
         html.frame.htmlCanvas.classList.add("real");
-        html.frame.view.title="Drag with left mouse button to move image, reset position with double left click, zoom with mouse wheel (faster with shift and slower with alt), and reset zoom by clicking the mouse wheel";
+        html.frame.view.title="Drag with left mouse button to move image (zooms with shift and moves drag origin with ctrl), reset position with double left click, zoom with mouse wheel (faster with shift and slower with alt), and reset zoom by clicking the mouse wheel";
         html.root.style.setProperty("--canvas-width",`${html.frame.htmlCanvas.width}px`);
     }else{
         html.frame.fitWindow.dataset.toggle="0";
@@ -1541,7 +1537,7 @@ html.frame.imgSmoothing.addEventListener("click",()=>{
 
 //~ canvas (syncronised) pan and zoom controls
 
-//~ dragging
+//~ dragging (zoom with shift and reset drag origin with ctrl)
 document.addEventListener("mousedown",ev=>{
     "use strict";
     if(ev.button!==0||!(
@@ -1558,7 +1554,32 @@ document.addEventListener("mousedown",ev=>{
 document.addEventListener("mousemove",ev=>{
     "use strict";
     if(!global.dragging)return;
-    setCanvasOffset(
+    if(ev.ctrlKey){
+        global.mouseX=ev.clientX;
+        global.mouseY=ev.clientY;
+        return;
+    }
+    if(ev.shiftKey){
+        const canvasStyle=global.draggingGIF?html.view.canvasStyle:html.frame.canvasStyle,
+            previousWidth=Number.parseFloat(canvasStyle.width),
+            previousHeight=Number.parseFloat(canvasStyle.height);
+        html.root.style.setProperty("--canvas-scaler",String(
+            Math.exp((
+                global.scaler=Math.max(
+                    global.gifDecode.width*-.5,
+                    Math.min(
+                        global.gifDecode.width*.5,
+                        global.scaler-(ev.clientY-global.mouseY)
+                    )
+                )
+            )*.01)
+        ));
+        setCanvasOffset(
+            canvasStyle,
+            (Number.parseFloat(canvasStyle.width)*global.panLeft)/previousWidth,
+            (Number.parseFloat(canvasStyle.height)*global.panTop)/previousHeight
+        );
+    }else setCanvasOffset(
         global.draggingGIF?html.view.canvasStyle:html.frame.canvasStyle,
         global.panLeft+(ev.clientX-global.mouseX),
         global.panTop+(ev.clientY-global.mouseY)
@@ -1578,13 +1599,13 @@ html.view.view.addEventListener("dblclick",ev=>{
     if((html.view.fitWindow.dataset.toggle??"0")==="0")return;
     setCanvasOffset(html.view.canvasStyle,0,0);
     ev.preventDefault();
-});
+},{passive:false});
 html.frame.view.addEventListener("dblclick",ev=>{
     "use strict";
     if((html.frame.fitWindow.dataset.toggle??"0")==="0")return;
     setCanvasOffset(html.frame.canvasStyle,0,0);
     ev.preventDefault();
-});
+},{passive:false});
 
 //~ zoom
 document.addEventListener("wheel",ev=>{
@@ -1740,14 +1761,11 @@ html.import.confirm.addEventListener("click",async()=>{
     html.root.dispatchEvent(new CustomEvent("loadstart"));
     decodeGIF(fileSrc,undefined,async(percentageRead,frameIndex,frame,framePos,gifSize)=>{
         "use strict";
-        // TODO draw correctly to GIF canvas
-        if(frameIndex===0){
-            //~ only on first call
-            global.undisposedCanvasObj.width=(html.frame.htmlCanvas.width=(html.view.htmlCanvas.width=gifSize[0]));
-            global.undisposedCanvasObj.height=(html.frame.htmlCanvas.height=(html.view.htmlCanvas.height=gifSize[1]));
-            html.view.canvas.clearRect(0,0,html.view.htmlCanvas.width,html.view.htmlCanvas.height);
-            html.frame.canvas.clearRect(0,0,html.frame.htmlCanvas.width,html.frame.htmlCanvas.height);
-            global.undisposedCanvas.clearRect(0,0,global.undisposedCanvasObj.width,global.undisposedCanvasObj.height);
+        // TODO draw correctly to GIF canvas (during loading)
+        if(frameIndex===0){//~ only on first call
+            html.frame.htmlCanvas.width=(html.view.htmlCanvas.width=gifSize[0]);
+            html.frame.htmlCanvas.height=(html.view.htmlCanvas.height=gifSize[1]);
+            //~ canvases are cleared automatically when their size is set
         }
         html.loading.gifProgress.value=(html.loading.frameProgress.value=percentageRead);
         html.loading.gifText.textContent=(html.loading.frameText.textContent=`Frame ${String(frameIndex+1).padStart(2,'0')} | ${(percentageRead*0x64).toFixed(2).padStart(5,'0')}%`);
@@ -1802,27 +1820,61 @@ html.import.confirm.addEventListener("click",async()=>{
         html.frameTime.frameRange.max=String(global.gifDecode.frames.length-1);
         updateFrameInfo();
         updateTimeInfoFrame();
-        //~ render first frame to every canvas
-        html.frame.canvas.clearRect(0,0,html.frame.htmlCanvas.width,html.frame.htmlCanvas.height);
-        html.frame.canvas.putImageData(gif.frames[0].image,gif.frames[0].left,gif.frames[0].top);
-        if(gif.backgroundColorIndex!==null){
-            html.view.canvas.fillStyle=(global.undisposedCanvas.fillStyle=gif.globalColorTable[gif.backgroundColorIndex].reduce((o,v)=>o+v.toString(0x10).padStart(2,'0'),'#'));
-            html.view.canvas.fillRect(0,0,html.view.htmlCanvas.width,html.view.htmlCanvas.height);
-            global.undisposedCanvas.fillRect(0,0,global.undisposedCanvasObj.width,global.undisposedCanvasObj.height);
-        }else{
-            html.view.canvas.clearRect(0,0,html.view.htmlCanvas.width,html.view.htmlCanvas.height);
-            global.undisposedCanvas.clearRect(0,0,global.undisposedCanvasObj.width,global.undisposedCanvasObj.height);
+        //~ draw first frame
+        const f=gif.frames[0];
+        //~ save image data if needed
+        if(f.disposalMethod===DisposalMethod.RestorePrevious){
+            if(f.plainTextData==null){
+                global.undisposedCanvasObj.width=f.width;
+                global.undisposedCanvasObj.height=f.height;
+                global.undisposedCanvas.drawImage(html.view.htmlCanvas,f.left,f.top,f.width,f.height,0,0,f.width,f.height);
+                global.undisposedPos[0]=f.left;
+                global.undisposedPos[1]=f.top;
+            }else{
+                const left=Math.min(f.left,f.plainTextData.left),
+                    top=Math.min(f.top,f.plainTextData.top),
+                    width=Math.max(f.left+f.width,f.plainTextData.left+f.plainTextData.width)-left,
+                    height=Math.max(f.top+f.height,f.plainTextData.top+f.plainTextData.height)-top;
+                global.undisposedCanvasObj.width=width;
+                global.undisposedCanvasObj.height=height;
+                global.undisposedCanvas.drawImage(html.view.htmlCanvas,left,top,width,height,0,0,width,height);
+                global.undisposedPos[0]=left;
+                global.undisposedPos[1]=top;
+            }
         }
-        html.view.canvas.drawImage(html.frame.htmlCanvas,0,0);
-        switch(gif.frames[0].disposalMethod){
-            case DisposalMethod.UndefinedA://! fall through
-            case DisposalMethod.UndefinedB://! fall through
-            case DisposalMethod.UndefinedC://! fall through
-            case DisposalMethod.UndefinedD://! fall through
-            case DisposalMethod.Unspecified://! fall through
-            case DisposalMethod.DoNotDispose:global.undisposedCanvas.drawImage(html.view.htmlCanvas,0,0);break;
-            case DisposalMethod.RestoreBackgroundColor:break;
-            case DisposalMethod.RestorePrevious:break;
+        //~ render first frame
+        html.frame.canvas.clearRect(0,0,html.frame.htmlCanvas.width,html.frame.htmlCanvas.height);
+        html.frame.canvas.putImageData(f.image,f.left,f.top);
+        html.view.canvas.drawImage(html.frame.htmlCanvas,f.left,f.top,f.width,f.height,f.left,f.top,f.width,f.height);
+        //~ render text extension
+        if(f.plainTextData!=null){
+            global.textCanvasObj.width=f.plainTextData.width;
+            global.textCanvasObj.height=f.plainTextData.height;
+            global.textCanvas.font=`${f.plainTextData.charHeight}px "consolas", monospace`;
+            const{width}=global.textCanvas.measureText('#'),
+                cols=Math.trunc(f.plainTextData.width/f.plainTextData.charWidth),
+                rows=Math.trunc(f.plainTextData.height/f.plainTextData.charHeight),
+                txt=f.plainTextData.text.replace(/[^\x20-\xF7]/g,' ');//~ only allow ASCII charaters between 0x20 and 0xF7
+            //@ts-ignore letterSpacing does indeed exist as a property of CanvasRenderingContext2D (of which OffscreenCanvasRenderingContext2D is based on)
+            global.textCanvas.letterSpacing=`${f.plainTextData.charWidth-width}px`;
+            //~ draw background box
+            if(f.transparentColorIndex!==f.plainTextData.backgroundColor){
+                global.textCanvas.fillStyle=global.gifDecode.globalColorTable[f.plainTextData.backgroundColor].reduce((o,v)=>o+v.toString(0x10).padStart(2,'0'),'#');
+                global.textCanvas.fillRect(0,0,global.textCanvasObj.width,global.textCanvasObj.height);
+            }else global.textCanvas.clearRect(0,0,global.textCanvasObj.width,global.textCanvasObj.height);
+            //~ draw/cutout text
+            if(f.transparentColorIndex===f.plainTextData.foregroundColor){
+                if(f.transparentColorIndex!==f.plainTextData.backgroundColor){
+                    global.textCanvas.globalCompositeOperation="destination-out";
+                    for(let r=0;r<rows;r++)global.textCanvas.fillText(txt.substring(cols*r,cols*(r+2)),0,f.plainTextData.charHeight*r);
+                    global.textCanvas.globalCompositeOperation="source-over";
+                }
+            }else{
+                global.textCanvas.fillStyle=global.gifDecode.globalColorTable[f.plainTextData.foregroundColor].reduce((o,v)=>o+v.toString(0x10).padStart(2,'0'),'#');
+                for(let r=0;r<rows;r++)global.textCanvas.fillText(txt.substring(cols*r,cols*(r+2)),0,f.plainTextData.charHeight*r);
+            }
+            //~ apply/draw to GIF canvas
+            html.view.canvas.drawImage(global.textCanvasObj,f.plainTextData.left,f.plainTextData.top);
         }
         //~ end loading
         blockInput(false);
@@ -1848,6 +1900,12 @@ html.import.confirm.addEventListener("click",async()=>{
 //~ \_|   |_|\__,_|\__, |_.__/ \__,_|\___|_|\_\  \___\___/|_| |_|\__|_|  \___/|_|___/
 //~                 __/ |
 //~                |___/
+
+html.frameTime.frameRange.addEventListener("input",()=>{
+    "use strict";
+    if(global.playback!==0)html.controls.pause.click();
+    html.frameTime.timeRange.value=(html.frameTime.time.textContent=String(global.time=global.frameStarts[global.frameIndex=Number(html.frameTime.frame.textContent=html.frameTime.frameRange.value)]));
+},{passive:true});
 
 html.controls.seekStart.addEventListener("click",()=>{
     "use strict";
@@ -1901,11 +1959,31 @@ html.controls.reverse.addEventListener("click",()=>{
     global.playback=-1;
 },{passive:true});
 
-html.frameTime.frameRange.addEventListener("input",()=>{
+html.speed.addEventListener("input",()=>{
     "use strict";
-    if(global.playback!==0)html.controls.pause.click();
-    html.frameTime.timeRange.value=(html.frameTime.time.textContent=String(global.time=global.frameStarts[global.frameIndex=Number(html.frameTime.frame.textContent=html.frameTime.frameRange.value)]));
+    let num=Number.parseFloat(html.speed.value);
+    if(Number.isNaN(num))num=1;
+    html.speed.classList.toggle("stop",(global.speed=Math.min(100,Math.max(0,num)))===0);
 },{passive:true});
+html.speed.addEventListener("change",()=>{
+    "use strict";
+    html.speed.classList.toggle("stop",(html.speed.value=String(global.speed))==="0");
+},{passive:true});
+html.speed.addEventListener("keydown",ev=>{
+    "use strict";
+    const dir=ev.key==="ArrowUp"?1:ev.key==="ArrowDown"?-1:0;
+    if(dir===0)return;
+    const dot=html.speed.value.indexOf(".");
+    let num=Number.parseFloat(dot===-1?html.speed.value:html.speed.value.substring(0,dot+4));
+    if(Number.isNaN(num))num=1;
+    if(ev.shiftKey)num+=dir*.1;
+    else if(ev.ctrlKey)num+=dir*.01;
+    else if(ev.altKey)num+=dir*.001;
+    else num+=dir;
+    num=Number.parseFloat(Math.min(100,Math.max(0,num)).toFixed(3)+(dot===-1?"":html.speed.value.substring(dot+4)));
+    html.speed.classList.toggle("stop",(html.speed.value=String(global.speed=num))==="0");
+    ev.preventDefault();
+},{passive:false});
 
 html.userInput.lock.addEventListener("click",()=>{
     "use strict";
@@ -2042,7 +2120,9 @@ html.loop.toggle.addEventListener("click",()=>{
             );
         }
     }
-    if(urlParam.play)html.controls.play.click();
+    if(urlParam.play>0)html.controls.play.click();
+    else if(urlParam.play<0)html.controls.reverse.click();
+    html.speed.value=String(global.speed=Math.abs(urlParam.play===0?1:urlParam.play));
 })();
 
 //~ animation loop
@@ -2053,18 +2133,14 @@ window.requestAnimationFrame(async function loop(time){
         return;
     }
     const delta=time-global.lastAnimationFrameTime,
-        previousPlayback=global.playback;
+        previousPlayback=global.playback*global.speed;
     global.fps.add(delta);
     html.view.fps.textContent=(html.frame.fps.textContent=`FPS ${global.fps.toString().padStart(3,' ')}`);
     // TODO make calculating frame index/time and rendering into functions for the GIFdecodeModule.js and the GIF decode section at the beginning of this file
     // TODO >> seekGIFplayback(GIF,loopIndex,frameIndex,timestamp,seekTime,skipUserInput?)=>[newLoopIndex,newFrameIndex,newTimestamp,paused]
-    // TODO >> makeRenderQueue(GIF,frameIndexCurrent,frameIndexNew)=>[render queue with frame indecies in reverse order (render [0] last),first action(fill color/clear/nothing/restore previous)] !when overriting "restore previous" canvas check if [0] is restore previous and if then do not safe it in that canvas and only render to screen
-    // FIXME save only area that get overwriten by a disposed frame and restore it before drawing the next frame (and posibly save again) - resize canvas to frame size and 1*1 if not used
-    // FIXME reverting to bg fills gb-color only where the frame areas where not entire GIF (or clear if no bg-color is set)
-    // FIXME transparency is only for frame images (which are already processed with transparency)
-    // TODO use global.undisposedCanvas global.undisposedIndex to save and restore frame data
+    // TODO >> renderGIFplayback(GIF,frameIndexCurrent,frameIndexNew,???)=>??? ~ maybe generator function
     //~ calculate time, frame, and loop amount (with user input)
-    let seek=global.playback*delta;
+    let seek=global.playback*global.speed*delta;
     if(seek<0)do{//~ reverse seek
         let i=global.frameIndex,
             f=global.gifDecode.frames[i];
@@ -2151,75 +2227,143 @@ window.requestAnimationFrame(async function loop(time){
     if(global.frameIndex!==global.frameIndexLast){
         updateFrameInfo();
         updateTimeInfoFrame();
-        const queue=[global.frameIndex],
-            seekForwards=(previousPlayback===0?global.frameIndex>global.frameIndexLast:previousPlayback>0);
-        //? if performance is bad for reverse play → only check frames from frameIndex to 0 and not all the way around to frameIndexLast (if it's further "back" than 0)
-        forLoop:for(
-            let i=seekForwards
-                ?(global.frameIndex===0?global.gifDecode.frames.length:global.frameIndex)-1
-                :(global.frameIndex===global.gifDecode.frames.length-1?0:global.frameIndex+1)
-            ;seekForwards
-                ?(global.frameIndex>global.frameIndexLast?i>=global.frameIndexLast:(i<global.frameIndex||i>=global.frameIndexLast))
-                :(global.frameIndex<global.frameIndexLast?i<=global.frameIndexLast:(i>global.frameIndex||i<=global.frameIndexLast))
-            ;seekForwards
-                ?--i<0&&global.frameIndexLast!==0&&(i+=global.gifDecode.frames.length)
-                :++i>=global.gifDecode.frames.length&&global.frameIndexLast!==global.gifDecode.frames.length-1&&(i-=global.gifDecode.frames.length)
-        )switch(global.gifDecode.frames[i].disposalMethod){
+        // TODO ? toggle for clear at [0] ~ seeks from [0] to frameIndex if frameIndex < frameIndexLast ~ more performant for reverse play
+        // TODO ? toggle for true inverse render ~ when reverse play render from frameIndexLast to frameIndex ~ disposal methods are also in reverse
+        let f=global.gifDecode.frames[global.frameIndexLast];
+        //~ restore saved image data or background color if available
+        switch(f.disposalMethod){
+            case DisposalMethod.RestorePrevious:
+                // TODO test if this will replace correctly with alpha channel
+                html.view.canvas.globalCompositeOperation="copy";
+                html.view.canvas.drawImage(global.undisposedCanvasObj,...global.undisposedPos);
+                html.view.canvas.globalCompositeOperation="source-over";
+            break;
+            case DisposalMethod.RestoreBackgroundColor:
+                if(global.gifDecode.backgroundColorIndex==null){
+                    html.view.canvas.clearRect(f.left,f.top,f.width,f.height);
+                    if(f.plainTextData!=null)html.view.canvas.clearRect(f.plainTextData.left,f.plainTextData.top,f.plainTextData.width,f.plainTextData.height);
+                }else{
+                    html.view.canvas.fillStyle=global.gifDecode.globalColorTable[global.gifDecode.backgroundColorIndex].reduce((o,v)=>o+v.toString(0x10).padStart(2,"0"),"#");
+                    html.view.canvas.fillRect(f.left,f.top,f.width,f.height);
+                    if(f.plainTextData!=null)html.view.canvas.fillRect(f.plainTextData.left,f.plainTextData.top,f.plainTextData.width,f.plainTextData.height);
+                }
+            break;
+        }
+        //~ render from (frameIndexLast +1) to (frameIndex -1)
+        for(
+            let i=global.frameIndexLast+1>=global.gifDecode.frames.length?0:global.frameIndexLast+1;
+            global.frameIndexLast<global.frameIndex?i<global.frameIndex:(i>global.frameIndexLast||i<global.frameIndex);
+            ++i>=global.gifDecode.frames.length&&global.frameIndex!==global.gifDecode.frames.length-1&&(i-=global.gifDecode.frames.length)
+        )switch((f=global.gifDecode.frames[i]).disposalMethod){
             case DisposalMethod.UndefinedA://! fall through
             case DisposalMethod.UndefinedB://! fall through
             case DisposalMethod.UndefinedC://! fall through
             case DisposalMethod.UndefinedD://! fall through
             case DisposalMethod.Unspecified://! fall through
-            //HY_ ######## TODO
             case DisposalMethod.DoNotDispose:
-                queue.push[i];
+                //~ render frame
+                html.frame.canvas.clearRect(0,0,html.frame.htmlCanvas.width,html.frame.htmlCanvas.height);
+                html.frame.canvas.putImageData(f.image,f.left,f.top);
+                html.view.canvas.drawImage(html.frame.htmlCanvas,f.left,f.top,f.width,f.height,f.left,f.top,f.width,f.height);
+                //~ render text extension
+                if(f.plainTextData!=null){
+                    global.textCanvasObj.width=f.plainTextData.width;
+                    global.textCanvasObj.height=f.plainTextData.height;
+                    global.textCanvas.font=`${f.plainTextData.charHeight}px "consolas", monospace`;
+                    const{width}=global.textCanvas.measureText('#'),
+                        cols=Math.trunc(f.plainTextData.width/f.plainTextData.charWidth),
+                        rows=Math.trunc(f.plainTextData.height/f.plainTextData.charHeight),
+                        txt=f.plainTextData.text.replace(/[^\x20-\xF7]/g,' ');//~ only allow ASCII charaters between 0x20 and 0xF7
+                    //@ts-ignore letterSpacing does indeed exist as a property of CanvasRenderingContext2D (of which OffscreenCanvasRenderingContext2D is based on)
+                    global.textCanvas.letterSpacing=`${f.plainTextData.charWidth-width}px`;
+                    //~ draw background box
+                    if(f.transparentColorIndex!==f.plainTextData.backgroundColor){
+                        global.textCanvas.fillStyle=global.gifDecode.globalColorTable[f.plainTextData.backgroundColor].reduce((o,v)=>o+v.toString(0x10).padStart(2,'0'),'#');
+                        global.textCanvas.fillRect(0,0,global.textCanvasObj.width,global.textCanvasObj.height);
+                    }else global.textCanvas.clearRect(0,0,global.textCanvasObj.width,global.textCanvasObj.height);
+                    //~ draw/cutout text
+                    if(f.transparentColorIndex===f.plainTextData.foregroundColor){
+                        if(f.transparentColorIndex!==f.plainTextData.backgroundColor){
+                            global.textCanvas.globalCompositeOperation="destination-out";
+                            for(let r=0;r<rows;r++)global.textCanvas.fillText(txt.substring(cols*r,cols*(r+2)),0,f.plainTextData.charHeight*r);
+                            global.textCanvas.globalCompositeOperation="source-over";
+                        }
+                    }else{
+                        global.textCanvas.fillStyle=global.gifDecode.globalColorTable[f.plainTextData.foregroundColor].reduce((o,v)=>o+v.toString(0x10).padStart(2,'0'),'#');
+                        for(let r=0;r<rows;r++)global.textCanvas.fillText(txt.substring(cols*r,cols*(r+2)),0,f.plainTextData.charHeight*r);
+                    }
+                    //~ apply/draw to GIF canvas
+                    html.view.canvas.drawImage(global.textCanvasObj,f.plainTextData.left,f.plainTextData.top);
+                }
             break;
             case DisposalMethod.RestoreBackgroundColor:
-                const f=global.gifDecode.frames[i];
-                html.view.canvas.fillStyle=global.gifDecode.backgroundColorIndex==null?"#000":`rgb(${global.gifDecode.globalColorTable[global.gifDecode.backgroundColorIndex].join(' ')} / ${global.gifDecode.backgroundColorIndex===f.transparentColorIndex?'0':'1'})`;
-                html.view.canvas.fillRect(f.left,f.top,f.width,f.height);
-            break forLoop;
-            case DisposalMethod.RestorePrevious:break;
-        }
-        await Promise.resolve();
-        if(queue[queue.length-1]===global.frameIndexLast)queue.length--;
-        for(let i=queue.length-1,f=global.gifDecode.frames[queue[i]];i>=0;--i>=0&&(f=global.gifDecode.frames[queue[i]])){
-            //~ override frame canvas and copy/add to GIF canvas
-            html.frame.canvas.clearRect(0,0,html.frame.htmlCanvas.width,html.frame.htmlCanvas.height);
-            html.frame.canvas.putImageData(f.image,f.left,f.top);
-            html.view.canvas.drawImage(html.frame.htmlCanvas,f.left,f.top,f.width,f.height,f.left,f.top,f.width,f.height);
-            //~ text extension
-            if(f.plainTextData!=null){
-                global.textCanvasObj.width=f.plainTextData.width;
-                global.textCanvasObj.height=f.plainTextData.height;
-                global.textCanvas.font=`${f.plainTextData.charHeight}px "consolas", monospace`;
-                await Promise.resolve();
-                const{width}=global.textCanvas.measureText('#'),
-                    cols=Math.trunc(f.plainTextData.width/f.plainTextData.charWidth),
-                    rows=Math.trunc(f.plainTextData.height/f.plainTextData.charHeight),
-                    txt=f.plainTextData.text.replace(/[^\x20-\xF7]/g,' ');//~ only allow ASCII charaters between 0x20 and 0xF7
-                //@ts-ignore letterSpacing does indeed exist as a property of CanvasRenderingContext2D (of which OffscreenCanvasRenderingContext2D is based on)
-                global.textCanvas.letterSpacing=`${f.plainTextData.charWidth-width}px`;
-                //~ draw background box
-                if(f.transparentColorIndex!==f.plainTextData.backgroundColor){
-                    global.textCanvas.fillStyle=global.gifDecode.globalColorTable[f.plainTextData.backgroundColor].reduce((o,v)=>o+v.toString(0x10).padStart(2,'0'),'#');
-                    global.textCanvas.fillRect(0,0,global.textCanvasObj.width,global.textCanvasObj.height);
-                }else global.textCanvas.clearRect(0,0,global.textCanvasObj.width,global.textCanvasObj.height);
-                //~ draw/cutout text
-                if(f.transparentColorIndex===f.plainTextData.foregroundColor){
-                    if(f.transparentColorIndex!==f.plainTextData.backgroundColor){
-                        global.textCanvas.globalCompositeOperation="destination-out";
-                        for(let r=0;r<rows;r++)global.textCanvas.fillText(txt.substring(cols*r,cols*(r+2)),0,f.plainTextData.charHeight*r);
-                        global.textCanvas.globalCompositeOperation="source-over";
-                    }
+                //~ render background color (or clear)
+                if(global.gifDecode.backgroundColorIndex==null){
+                    html.view.canvas.clearRect(f.left,f.top,f.width,f.height);
+                    if(f.plainTextData!=null)html.view.canvas.clearRect(f.plainTextData.left,f.plainTextData.top,f.plainTextData.width,f.plainTextData.height);
                 }else{
-                    global.textCanvas.fillStyle=global.gifDecode.globalColorTable[f.plainTextData.foregroundColor].reduce((o,v)=>o+v.toString(0x10).padStart(2,'0'),'#');
-                    for(let r=0;r<rows;r++)global.textCanvas.fillText(txt.substring(cols*r,cols*(r+2)),0,f.plainTextData.charHeight*r);
+                    html.view.canvas.fillStyle=global.gifDecode.globalColorTable[global.gifDecode.backgroundColorIndex].reduce((o,v)=>o+v.toString(0x10).padStart(2,"0"),"#");
+                    html.view.canvas.fillRect(f.left,f.top,f.width,f.height);
+                    if(f.plainTextData!=null)html.view.canvas.fillRect(f.plainTextData.left,f.plainTextData.top,f.plainTextData.width,f.plainTextData.height);
                 }
-                //~ apply/draw to GIF canvas
-                html.view.canvas.drawImage(global.textCanvasObj,f.plainTextData.left,f.plainTextData.top);
+            break;
+            case DisposalMethod.RestorePrevious:
+                //~ skip frame
+            break;
+        }
+        //~ save image data if needed
+        if((f=global.gifDecode.frames[global.frameIndex]).disposalMethod===DisposalMethod.RestorePrevious){
+            if(f.plainTextData==null){
+                global.undisposedCanvasObj.width=f.width;
+                global.undisposedCanvasObj.height=f.height;
+                global.undisposedCanvas.drawImage(html.view.htmlCanvas,f.left,f.top,f.width,f.height,0,0,f.width,f.height);
+                global.undisposedPos[0]=f.left;
+                global.undisposedPos[1]=f.top;
+            }else{
+                const left=Math.min(f.left,f.plainTextData.left),
+                    top=Math.min(f.top,f.plainTextData.top),
+                    width=Math.max(f.left+f.width,f.plainTextData.left+f.plainTextData.width)-left,
+                    height=Math.max(f.top+f.height,f.plainTextData.top+f.plainTextData.height)-top;
+                global.undisposedCanvasObj.width=width;
+                global.undisposedCanvasObj.height=height;
+                global.undisposedCanvas.drawImage(html.view.htmlCanvas,left,top,width,height,0,0,width,height);
+                global.undisposedPos[0]=left;
+                global.undisposedPos[1]=top;
             }
-            if((i&0x40)===0x40)await Promise.resolve();
+        }
+        //~ draw newest frame
+        html.frame.canvas.clearRect(0,0,html.frame.htmlCanvas.width,html.frame.htmlCanvas.height);
+        html.frame.canvas.putImageData(f.image,f.left,f.top);
+        html.view.canvas.drawImage(html.frame.htmlCanvas,f.left,f.top,f.width,f.height,f.left,f.top,f.width,f.height);
+        //~ render text extension
+        if(f.plainTextData!=null){
+            global.textCanvasObj.width=f.plainTextData.width;
+            global.textCanvasObj.height=f.plainTextData.height;
+            global.textCanvas.font=`${f.plainTextData.charHeight}px "consolas", monospace`;
+            const{width}=global.textCanvas.measureText('#'),
+                cols=Math.trunc(f.plainTextData.width/f.plainTextData.charWidth),
+                rows=Math.trunc(f.plainTextData.height/f.plainTextData.charHeight),
+                txt=f.plainTextData.text.replace(/[^\x20-\xF7]/g,' ');//~ only allow ASCII charaters between 0x20 and 0xF7
+            //@ts-ignore letterSpacing does indeed exist as a property of CanvasRenderingContext2D (of which OffscreenCanvasRenderingContext2D is based on)
+            global.textCanvas.letterSpacing=`${f.plainTextData.charWidth-width}px`;
+            //~ draw background box
+            if(f.transparentColorIndex!==f.plainTextData.backgroundColor){
+                global.textCanvas.fillStyle=global.gifDecode.globalColorTable[f.plainTextData.backgroundColor].reduce((o,v)=>o+v.toString(0x10).padStart(2,'0'),'#');
+                global.textCanvas.fillRect(0,0,global.textCanvasObj.width,global.textCanvasObj.height);
+            }else global.textCanvas.clearRect(0,0,global.textCanvasObj.width,global.textCanvasObj.height);
+            //~ draw/cutout text
+            if(f.transparentColorIndex===f.plainTextData.foregroundColor){
+                if(f.transparentColorIndex!==f.plainTextData.backgroundColor){
+                    global.textCanvas.globalCompositeOperation="destination-out";
+                    for(let r=0;r<rows;r++)global.textCanvas.fillText(txt.substring(cols*r,cols*(r+2)),0,f.plainTextData.charHeight*r);
+                    global.textCanvas.globalCompositeOperation="source-over";
+                }
+            }else{
+                global.textCanvas.fillStyle=global.gifDecode.globalColorTable[f.plainTextData.foregroundColor].reduce((o,v)=>o+v.toString(0x10).padStart(2,'0'),'#');
+                for(let r=0;r<rows;r++)global.textCanvas.fillText(txt.substring(cols*r,cols*(r+2)),0,f.plainTextData.charHeight*r);
+            }
+            //~ apply/draw to GIF canvas
+            html.view.canvas.drawImage(global.textCanvasObj,f.plainTextData.left,f.plainTextData.top);
         }
         global.frameIndexLast=global.frameIndex;
     }

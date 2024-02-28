@@ -17,14 +17,13 @@
             ~ timeTickmarks indicate frame timestamps ~ ignore for user-input-flags
             ~ use offscreen canvas for special disposal method case (3)
             ? auto hide gifView buttons after 1sec no mouse movement (js mouse move) or mouse leaves div (css hover)
-            ! speed controls (variable/code already supports this - normal and reverse) ~ right (inside) of playback controls
             ? useless/verbose stats
             ? (AppExt) raw bytes as hex string (textarea) ~ instead of copy button ? both
             ? maybe add scroll shadows ↓
             ?>> CSS style   https://github.com/MAZ01001/MAZ01001.github.io/blob/master/index.html#L48-L60
             ?>> JS function https://github.com/MAZ01001/MAZ01001.github.io/blob/master/index.html#L250-L270
             ?>> JS event    https://github.com/MAZ01001/MAZ01001.github.io/blob/master/index.html#L318-L320
-            ! force-clear-last-frame flag for URL & toggle button left (inside) of playback controls (default off)
+            ! force-clear-last-frame flag for URL & toggle button left of playback controls (default off)
             ? add [byte position] to title ~ comment, application/unkown extension, and global/local color table
             ? new canvas button to change canvas background/-color
             - >> dialog menu with some options and a live preview
@@ -60,6 +59,7 @@
             <input type="button" id="seekNext" value="&RightArrowBar;" title="next frame (paused)">
             <input type="button" id="seekEnd" value="⏭" title="last frame (paused)">
         </div>
+        <input type="number" id="speed" value="1" min="0" max="100" step="any" placeholder="1" title="playback speed multiplier [0 to 100]">
         <fieldset id="userInputArea"><legend title="If highlighted blue needs user input to continue playback">User input</legend>
             <label for="userInputTimeout" title="Timeout for current frame (if present / when waiting for user input)">Timeout: <progress id="userInputTimeout" value></progress> <span id="userInputTimeoutTime">-</span> ms</label>
             <input type="button" id="userInput" title="Click to continue playing GIF" value="Continue">

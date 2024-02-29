@@ -48,7 +48,7 @@
 export const DisposalMethod=Object.freeze({
     /**unspecified > do nothing (default to {@linkcode DisposalMethod.DoNotDispose})*/Unspecified:0,
     /**do not dispose > keep image / combine with next frame*/DoNotDispose:1,
-    /**restore to background color > frame area gets filled with background color (use transparent (clear area) if global color table is not available)*/RestoreBackgroundColor:2,
+    /**restore to background color > opaque frame pixels get filled with background color or cleared (when it's the same as {@linkcode Frame.transparentColorIndex})*/RestoreBackgroundColor:2,
     /**restore to previous > dispose frame data after rendering (revealing what was there before)*/RestorePrevious:3,
     /**undefined > fallback to {@linkcode DisposalMethod.Unspecified}*/UndefinedA:4,
     /**undefined > fallback to {@linkcode DisposalMethod.Unspecified}*/UndefinedB:5,

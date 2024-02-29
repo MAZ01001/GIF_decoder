@@ -56,7 +56,7 @@
 const DisposalMethod=Object.freeze({
     /**unspecified > do nothing (default to {@linkcode DisposalMethod.DoNotDispose})*/Unspecified:0,
     /**do not dispose > keep image / combine with next frame*/DoNotDispose:1,
-    /**restore to background color > frame area gets filled with background color (use transparent (clear area) if global color table is not available)*/RestoreBackgroundColor:2,
+    /**restore to background color > opaque frame pixels get filled with background color or cleared (when it's the same as {@linkcode Frame.transparentColorIndex})*/RestoreBackgroundColor:2,
     /**restore to previous > dispose frame data after rendering (revealing what was there before)*/RestorePrevious:3,
     /**undefined > fallback to {@linkcode DisposalMethod.Unspecified}*/UndefinedA:4,
     /**undefined > fallback to {@linkcode DisposalMethod.Unspecified}*/UndefinedB:5,
@@ -1204,6 +1204,8 @@ const gcd=(a,b)=>{
     return b;
 }
 
+// FIXME background and transparent in the same color table allowed ~ global:background/transparent & local:transparent
+// FIXME background and transparent at the same time ~ split background
 /**
  * ## Generate the HTML for {@linkcode html.info.globalColorTable} ({@linkcode GIF.globalColorTable}) and {@linkcode html.frame.localColorTable} ({@linkcode Frame.localColorTable})
  * @param {[number,number,number][]} colorTable - global or local color table (list of `[R,G,B]`)
@@ -1213,7 +1215,7 @@ const gcd=(a,b)=>{
  */
 const genHTMLColorGrid=(colorTable,global,colorIndex)=>{
     "use strict";
-    if(colorTable.length===0)return[Object.assign(document.createElement("span"),{textContent:`Empty list (see ${global?"global":"local"} color table)`})];
+    if(colorTable.length===0)return[Object.assign(document.createElement("span"),{textContent:`Empty list (see ${global?"loc":"glob"}al color table)`})];
     return colorTable.map((color,i)=>{
         "use strict";
         const input=document.createElement("input"),
@@ -1341,15 +1343,15 @@ const updateFrameInfo=()=>{
     html.frame.time.textContent=`${f.delayTime} ms`;
     html.frame.userInputFlag.checked=f.userInputDelayFlag;
     html.frame.disposalMethod.replaceChildren(...(()=>{switch(f.disposalMethod){
-        case DisposalMethod.Unspecified:           return[`[${DisposalMethod.Unspecified            } unspecified]`,            document.createElement("br"),"do nothing (keep image / combine with next frame)"];
-        case DisposalMethod.DoNotDispose:          return[`[${DisposalMethod.DoNotDispose           } do not dispose]`,         document.createElement("br"),"keep image / combine with next frame"];
-        case DisposalMethod.RestoreBackgroundColor:return[`[${DisposalMethod.RestoreBackgroundColor } restore to background]`,  document.createElement("br"),"frame area gets filled with background color"];
-        case DisposalMethod.RestorePrevious:       return[`[${DisposalMethod.RestorePrevious        } restore to previous]`,    document.createElement("br"),"dispose frame data after rendering (revealing what was there before)"];
-        case DisposalMethod.UndefinedA:            return[`[${DisposalMethod.UndefinedA             } undefined]`,              document.createElement("br"),"(fallback to [0 unspecified]) do nothing (keep image / combine with next frame)"];
-        case DisposalMethod.UndefinedB:            return[`[${DisposalMethod.UndefinedB             } undefined]`,              document.createElement("br"),"(fallback to [0 unspecified]) do nothing (keep image / combine with next frame)"];
-        case DisposalMethod.UndefinedC:            return[`[${DisposalMethod.UndefinedC             } undefined]`,              document.createElement("br"),"(fallback to [0 unspecified]) do nothing (keep image / combine with next frame)"];
-        case DisposalMethod.UndefinedD:            return[`[${DisposalMethod.UndefinedD             } undefined]`,              document.createElement("br"),"(fallback to [0 unspecified]) do nothing (keep image / combine with next frame)"];
-        default:                                   return[`[${f.disposalMethod} ERROR]`,document.createElement("br"),"unknown disposal method"];
+        case DisposalMethod.Unspecified:return[`[${DisposalMethod.Unspecified} unspecified]`,document.createElement("br"),"do nothing (keep image / combine with next frame)"];
+        case DisposalMethod.DoNotDispose:return[`[${DisposalMethod.DoNotDispose} do not dispose]`,document.createElement("br"),"keep image / combine with next frame"];
+        case DisposalMethod.RestoreBackgroundColor:return[`[${DisposalMethod.RestoreBackgroundColor} restore to background color]`,document.createElement("br"),"opaque frame pixels get filled with background color or cleared"];
+        case DisposalMethod.RestorePrevious:return[`[${DisposalMethod.RestorePrevious} restore to previous]`,document.createElement("br"),"dispose frame data after rendering (revealing what was there before)"];
+        case DisposalMethod.UndefinedA:return[`[${DisposalMethod.UndefinedA} undefined]`,document.createElement("br"),"(fallback to [0 unspecified]) do nothing (keep image / combine with next frame)"];
+        case DisposalMethod.UndefinedB:return[`[${DisposalMethod.UndefinedB} undefined]`,document.createElement("br"),"(fallback to [0 unspecified]) do nothing (keep image / combine with next frame)"];
+        case DisposalMethod.UndefinedC:return[`[${DisposalMethod.UndefinedC} undefined]`,document.createElement("br"),"(fallback to [0 unspecified]) do nothing (keep image / combine with next frame)"];
+        case DisposalMethod.UndefinedD:return[`[${DisposalMethod.UndefinedD} undefined]`,document.createElement("br"),"(fallback to [0 unspecified]) do nothing (keep image / combine with next frame)"];
+        default:return[`[${f.disposalMethod} ERROR]`,document.createElement("br"),"unknown disposal method"];
     }})());
     html.frame.frameReserved.textContent=`${f.reserved} (0b${f.reserved.toString(2).padStart(2,'0')})`;
     html.frame.frameGCReserved.textContent=`${f.GCreserved} (0b${f.GCreserved.toString(2).padStart(3,'0')})`;
@@ -1740,7 +1742,7 @@ html.import.file.addEventListener("change",async()=>{
 html.import.confirm.addEventListener("click",async()=>{
     "use strict";
     const fileSrc=html.import.preview.src,
-        fileName=html.import.url.disabled?html.import.file.files?.[0]?.name:html.import.url.value.match(/^[^#?]+?\/?(.+?\.gif)(?:[#?]|$)/i)?.[0];
+        fileName=(html.import.file.files?.length??0)>0?html.import.file.files?.[0]?.name:html.import.url.value.match(/^[^#?]+?\/?(.+?\.gif)(?:[#?]|$)/i)?.[0];
     html.import.menu.close();
     //~ pause, auto size to window, and reset pan & zoom
     if(global.playback!==0)html.controls.pause.click();
@@ -2227,8 +2229,8 @@ window.requestAnimationFrame(async function loop(time){
     if(global.frameIndex!==global.frameIndexLast){
         updateFrameInfo();
         updateTimeInfoFrame();
-        // TODO ? toggle for clear at [0] ~ seeks from [0] to frameIndex if frameIndex < frameIndexLast ~ more performant for reverse play
-        // TODO ? toggle for true inverse render ~ when reverse play render from frameIndexLast to frameIndex ~ disposal methods are also in reverse
+        // TODO ? toggle=1 for clear at [0] (ignores last disposal nmethod) ~ seeks from [0] to frameIndex if frameIndex < frameIndexLast ~ also more performant for reverse play
+        // TODO ? toggle=0 for true inverse render ~ when reverse play render from frameIndexLast to frameIndex ~ disposal methods are also in reverse
         let f=global.gifDecode.frames[global.frameIndexLast];
         //~ restore saved image data or background color if available
         switch(f.disposalMethod){
@@ -2239,6 +2241,7 @@ window.requestAnimationFrame(async function loop(time){
                 html.view.canvas.globalCompositeOperation="source-over";
             break;
             case DisposalMethod.RestoreBackgroundColor:
+                // FIXME color only pixels that are opaque in the frame ~ can be transparent ie. clear ~ maybe use undisposedCanvas for that
                 if(global.gifDecode.backgroundColorIndex==null){
                     html.view.canvas.clearRect(f.left,f.top,f.width,f.height);
                     if(f.plainTextData!=null)html.view.canvas.clearRect(f.plainTextData.left,f.plainTextData.top,f.plainTextData.width,f.plainTextData.height);
@@ -2297,6 +2300,7 @@ window.requestAnimationFrame(async function loop(time){
                 }
             break;
             case DisposalMethod.RestoreBackgroundColor:
+                // FIXME color only pixels that are opaque in the frame ~ can be transparent ie. clear ~ maybe use undisposedCanvas for that
                 //~ render background color (or clear)
                 if(global.gifDecode.backgroundColorIndex==null){
                     html.view.canvas.clearRect(f.left,f.top,f.width,f.height);

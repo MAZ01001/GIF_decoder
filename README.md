@@ -218,16 +218,16 @@ The `GIF` object constructed has the following attributes.
 
 <details open><summary>Click to toggle table</summary>
 
-| Name                     | Internal value <br> (`number`) | Description                 | Action                                                                                                             |
-| ------------------------ | ------------------------------ | --------------------------- | ------------------------------------------------------------------------------------------------------------------ |
-| `Unspecified`            | `0`                            | unspecified                 | do nothing (default to `DoNotDispose`)                                                                             |
-| `DoNotDispose`           | `1`                            | do not dispose              | keep image / combine with next frame                                                                               |
-| `RestoreBackgroundColor` | `2`                            | restore to background color | frame area gets filled with background color (use transparent (clear area) if global color table is not available) |
-| `RestorePrevious`        | `3`                            | restore to previous         | dispose frame data after rendering (revealing what was there before)                                               |
-| `UndefinedA`             | `4`                            | undefined                   | fallback to `Unspecified`                                                                                          |
-| `UndefinedB`             | `5`                            | undefined                   | fallback to `Unspecified`                                                                                          |
-| `UndefinedC`             | `6`                            | undefined                   | fallback to `Unspecified`                                                                                          |
-| `UndefinedD`             | `7`                            | undefined                   | fallback to `Unspecified`                                                                                          |
+| Name                     | Internal value <br> (`number`) | Description                 | Action                                                                                                          |
+| ------------------------ | ------------------------------ | --------------------------- | --------------------------------------------------------------------------------------------------------------- |
+| `Unspecified`            | `0`                            | unspecified                 | do nothing (default to `DoNotDispose`)                                                                          |
+| `DoNotDispose`           | `1`                            | do not dispose              | keep image / combine with next frame                                                                            |
+| `RestoreBackgroundColor` | `2`                            | restore to background color | opaque frame pixels get filled with background color or cleared (when it's the same as `transparentColorIndex`) |
+| `RestorePrevious`        | `3`                            | restore to previous         | dispose frame data after rendering (revealing what was there before)                                            |
+| `UndefinedA`             | `4`                            | undefined                   | fallback to `Unspecified`                                                                                       |
+| `UndefinedB`             | `5`                            | undefined                   | fallback to `Unspecified`                                                                                       |
+| `UndefinedC`             | `6`                            | undefined                   | fallback to `Unspecified`                                                                                       |
+| `UndefinedD`             | `7`                            | undefined                   | fallback to `Unspecified`                                                                                       |
 
 </details>
 

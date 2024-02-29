@@ -411,6 +411,7 @@ div#frameTextArea{
     align-items: stretch;
     place-content: safe center;
 }
+/* TODO frame info area ~ disposal method field limit to 15.5*3rem */
 div#frameTextArea.empty td[id],
 div#frameTextArea.empty td:has([id]){opacity: .25;}
 div#globalColorTable,

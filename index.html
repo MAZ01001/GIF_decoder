@@ -59,7 +59,7 @@
             <input type="button" id="seekNext" value="&RightArrowBar;" title="next frame (paused)">
             <input type="button" id="seekEnd" value="⏭" title="last frame (paused)">
         </div>
-        <input type="number" id="speed" value="1" min="0" max="100" step="any" placeholder="1" title="playback speed multiplier [0 to 100]">
+        <input type="number" id="speed" value="1" min="0" max="100" step="any" placeholder="1" title="playback speed multiplier [0 to 100] (use arrow keys with shift/ctrl/alt for more precision)">
         <fieldset id="userInputArea"><legend title="If highlighted blue needs user input to continue playback">User input</legend>
             <label for="userInputTimeout" title="Timeout for current frame (if present / when waiting for user input)">Timeout: <progress id="userInputTimeout" value></progress> <span id="userInputTimeoutTime">-</span> ms</label>
             <input type="button" id="userInput" title="Click to continue playing GIF" value="Continue">
@@ -79,9 +79,10 @@
                             <tr title="The filename of the GIF currently loaded"><td>Filename</td><td id="fileName">____</td></tr>
                             <tr title="The width*height of the entire GIF"><td>Size</td><td><span id="totalWidth">-</span> * <span id="totalHeight">-</span> px</td></tr>
                             <tr title="The amount of frames in this GIF"><td>Total frames</td><td id="totalFrames">-</td></tr>
-                            <tr title="The (maximum) total time of the entire GIF"><td>Total Time</td><td id="totalTime">-</span> ms</tr>
-                            <tr title="the Pixel aspect ratio of the GIF"><td>Pixel aspect ratio</td><td id="pixelAspectRatio">-:-</td></tr>
-                            <tr title="The color resolution of the GIF"><td>Color resolution</td><td id="colorRes">-</span> bit</tr>
+                            <tr title="The (maximum) total time of the entire GIF"><td>Total Time</td><td id="totalTime">-</td> ms</tr>
+                            <tr title="The Pixel aspect ratio of the GIF"><td>Pixel aspect ratio</td><td id="pixelAspectRatio">-:-</td></tr>
+                            <tr title="The color resolution of the GIF"><td>Color resolution</td><td id="colorRes">-</td> bit</tr>
+                            <tr title="The index of the color used for the background (if available)"><td>Background color</td><td id="backgroundColorIndex">-</td></tr>
                         </table>
                         <fieldset><legend title="The global color table of the GIF">Global color table</legend>
                             <details open id="detailsGlobalColorTable"><summary>Click to toggle contents</summary>
@@ -130,6 +131,7 @@
                             <tr title="The position of the current frame from the left/top edge of the GIF"><td>Position</td><td><span id="frameLeft">-</span> / <span id="frameTop">-</span> px</td></tr>
                             <tr title="How long this frame is displayed for"><td>Time</td><td id="frameTime">- ms</td></tr>
                             <tr title="If the user input flag is set for the current frame"><td>User input flag</td><td><input type="checkbox" id="frameUserInputFlag" disabled></td></tr>
+                            <tr title="The index of the color that is used for transparency (if available)"><td>Transparent color</td><td id="transparentColorIndex">-</td></tr>
                             <tr title="The disposal method of the current frame"><td>Disposal method</td><td id="frameDisposalMethod">[- ____]<br>________</td></tr>
                             <tr title="2bits reserved for future use (from a packed field in the image descriptor block)"><td>Reserved field (ID)</td><td id="frameReserved">- (0b00)</td></tr>
                             <tr title="3bits reserved for future use (from a packed field in the graphics control extension block)"><td>Reserved field (GC)</td><td id="frameGCReserved">- (0b000)</td></tr>
@@ -148,8 +150,8 @@
                                         <tr title="The width*height of the character grid"><td>Grid size</td><td><span id="frameTextWidth">-</span> * <span id="frameTextHeight">-</span> px</td></tr>
                                         <tr title="The position of the character grid from the left/top edge of the GIF"><td>Grid position</td><td><span id="frameTextLeft">-</span> / <span id="frameTextTop">-</span> px</td></tr>
                                         <tr title="The width*height for each cell in the character grid"><td>Character size</td><td><span id="frameTextCharWidth">-</span> * <span id="frameTextCharHeight">-</span> px</td></tr>
-                                        <tr title="The foreground color of the text (click to copy hex code)"><td>Foreground</td><td><input type="color" id="frameTextCharForeground" value="#FF00FF"></td></tr>
-                                        <tr title="Teh background color of the text (click to copy hex code)"><td>Background</td><td><input type="color" id="frameTextCharBackground" value="#FF00FF"></td></tr>
+                                        <tr title="The foreground color of the text (click to copy hex code)"><td>Foreground</td><td><input type="color" id="frameTextCharForeground"></td></tr>
+                                        <tr title="Teh background color of the text (click to copy hex code)"><td>Background</td><td><input type="color" id="frameTextCharBackground"></td></tr>
                                     </table>
                                 </div>
                             </details>

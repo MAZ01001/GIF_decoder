@@ -8,6 +8,8 @@
 //~ | |_\ \_| |_| |     | (_| |  __/ (_| (_) | (_| |  __/
 //~  \____/\___/\_|      \__,_|\___|\___\___/ \__,_|\___|
 
+// BUG requires perfect files → promise-reject when reading a corrupt or incomplete file
+
 /**
  * @typedef {Object} GIF
  * @property {number} width the width of the image in pixels (logical screen size)
@@ -689,6 +691,8 @@ const html=Object.freeze({
         pixelAspectRatio:document.getElementById("pixelAspectRatio"),
         /** @type {HTMLTableCellElement} Shows the color resolution of the GIF (in bits) *///@ts-ignore element does exist in DOM
         colorRes:document.getElementById("colorRes"),
+        /** @type {HTMLTableCellElement} The {@linkcode GIF.backgroundColorIndex} (use `-` if `null`) *///@ts-ignore element does exist in DOM
+        backgroundColorIndex:document.getElementById("backgroundColorIndex"),
         /** @type {HTMLDivElement} List of colors in the global color table of the GIF (`<label title="Color index I - click to copy hex code">[I] <input type="color"></label>` (optionaly with class `background-flag` / `transparent-flag` and addition to title) for each color or `<span>Empty list (see local color tables)</span>`) *///@ts-ignore element does exist in DOM
         globalColorTable:document.getElementById("globalColorTable"),
         /** @type {HTMLDivElement} List of GIF application extensions in RAW binary (`<fieldset><legend title="Application-Extension identifier (8 characters) and authentication code (3 characters)">#I APPLICAT1.0</legend><span title="Description">unknown application extension</span> <input type="button" title="Click to copy raw binary to clipboard" value="Copy raw binary"></fieldset>` for each app. ext. or `<span>Empty list</span>`) *///@ts-ignore element does exist in DOM
@@ -730,6 +734,8 @@ const html=Object.freeze({
         time:document.getElementById("frameTime"),
         /** @type {HTMLInputElement} Disabled checkbox to show if this frame is waiting for user input *///@ts-ignore element does exist in DOM
         userInputFlag:document.getElementById("frameUserInputFlag"),
+        /** @type {HTMLTableCellElement} The {@linkcode Frame.transparentColorIndex} (use `-` if `null`) *///@ts-ignore element does exist in DOM
+        transparentColorIndex:document.getElementById("transparentColorIndex"),
         /** @type {HTMLTableCellElement} Readonly, shows the disposal method of the current frame (index, text, and meaning) *///@ts-ignore element does exist in DOM
         disposalMethod:document.getElementById("frameDisposalMethod"),
         /** @type {HTMLTableCellElement} Reserved field {@linkcode Frame.reserved} (format: `- (0b00)`) *///@ts-ignore element does exist in DOM
@@ -963,12 +969,8 @@ const urlParam=(()=>{
         frameSmooth:(args.get("frameSmooth")??"0")!=="0",
         /** The position/offset of {@linkcode html.view.htmlCanvas} ([left,top] safe integers) - default `[0,0]` (origin) */
         pos:Object.freeze(args.get("pos")?.match(/^(0|[1-9][0-9]*),(0|[1-9][0-9]*)$/)?.slice(1,3).map(v=>Number.isSafeInteger(tmpNum=Number(v))?tmpNum:0)??[0,0]),
-        /**
-         * The starting zoom of {@linkcode html.view.htmlCanvas} (safe integer) - default `0` (no zoom)
-         *
-         * Cap to (+-) half of GIF width (floored)
-         */
-        zoom:Number.isSafeInteger(tmpNum=Number(args.get("zoom")))?tmpNum:0
+        /** The starting zoom of {@linkcode html.view.htmlCanvas} (clamped to +- 500) - default `0` (no zoom) */
+        zoom:Number.isNaN(tmpNum=Number(args.get("zoom")))?0:tmpNum
     });
 })();
 
@@ -1015,8 +1017,8 @@ const global=Object.seal({
             this._avg_=Math.round(this._avg_/this._arr_.length);
             return ft;
         }
-        valueOf(){return this._avg_;}
-        toString(){return this._avg_.toString();}
+        /** average of stored frame times */
+        get avg(){return this._avg_;}
     }(8),
     /** last frame timestamp of animation loop (not related to GIF) */
     lastAnimationFrameTime:0,
@@ -1114,7 +1116,8 @@ const silentImportGIF=async url=>{
         html.import.confirm.click();
     });
     html.import.menu.showModal();
-    blockInput(false);
+    if(global.gifDecode==null)html.open.disabled=false;
+    else blockInput(false);
     html.import.abort.focus();
     return false;
 };
@@ -1129,7 +1132,7 @@ const copyHexColorToClipboard=function(ev){
     "use strict";
     ev.preventDefault();
     navigator.clipboard.writeText(this.value).catch(reason=>console.warn("Couldn't copy color %s, reason: %O",this.value,reason));
-}
+};
 
 /**
  * ## Set canvas offset position (in pixel)
@@ -1173,22 +1176,37 @@ const blockInput=state=>{
     html.frame.fullWindow.disabled=state;
     html.frame.fitWindow.disabled=state;
     html.frame.imgSmoothing.disabled=state;
-}
+};
 
 /**
- * Adds `'` as digit seperator every 3 digits (from the right)
- * @param {number} num - an integer
- * @param {number} [radix] - numerical base (integer from 2 to 36 inclusive) - default `10`
- * @returns {string} the formatted number (only uppercase letters if any) - if {@linkcode num} is not an integer or it overflows into scientific notation (only possible with {@linkcode radix} `10`) it does not format the number an returns it as is
+ * ## Adds `'` as digit seperator every 3 digits (from the right)
+ * @param {number} num - a number
+ * @param {number} [fixed] - number of decimal places in fixed-point notation (0 - 20, inclusive) - default `0`
+ * @returns {string} the formatted number (only uppercase letters, if any) - if {@linkcode num} overflows into scientific notation, it does not format the number an returns it as is (applied fixed-point notation and uppercase)
  */
-const formatInt=(num,radix)=>{
+const formatNumFixed=(num,fixed)=>{
     "use strict";
-    radix??=0xA;
-    let n=num.toString(radix).toUpperCase();
-    if(!Number.isInteger(num)||(radix===0xA&&n.includes('E')))return n;
-    const offset=n.length%3;
-    for(let i=offset===0?3:offset;i<n.length;i+=4)n=`${n.substring(0,i)}'${n.substring(i)}`;
+    let n=num.toFixed(fixed??=0).toUpperCase();
+    if(n.includes('E'))return n;
+    const end=fixed>0?n.length-(fixed+1):n.length,
+        offset=end%3;
+    for(let i=offset===0?3:offset;i<end;i+=4)n=`${n.substring(0,i)}'${n.substring(i)}`;
     return n;
+};
+
+/**
+ * ## Get CSS color from {@linkcode gif}
+ * priority: [transparent flag > local color table] > global color table > `transparent`
+ * @param {GIF} gif - a {@linkcode GIF} obj
+ * @param {number} frame - frame index (for transparent flag and local color table)
+ * @param {number} index - index into color tables
+ * @returns {string} CSS hex color or `transparent`
+ */
+const getCSSColor=(gif,frame,index)=>{
+    "use strict";
+    if(gif.frames[frame]==null)return gif.globalColorTable[index]?.reduce((o,v)=>o+v.toString(0x10).toUpperCase().padStart(2,'0'),"#")??"transparent";
+    if(gif.frames[frame].transparentColorIndex===index)return"transparent";
+    return(gif.frames[frame].localColorTable[index]??gif.globalColorTable[index])?.reduce((o,v)=>o+v.toString(0x10).toUpperCase().padStart(2,'0'),"#")??"transparent";
 };
 
 /**
@@ -1202,18 +1220,17 @@ const gcd=(a,b)=>{
     "use strict";
     for([a,b]=a<b?[b,a]:[a,b];a%b>0;[a,b]=[b,a%b]);
     return b;
-}
+};
 
-// FIXME background and transparent in the same color table allowed ~ global:background/transparent & local:transparent
-// FIXME background and transparent at the same time ~ split background
 /**
  * ## Generate the HTML for {@linkcode html.info.globalColorTable} ({@linkcode GIF.globalColorTable}) and {@linkcode html.frame.localColorTable} ({@linkcode Frame.localColorTable})
  * @param {[number,number,number][]} colorTable - global or local color table (list of `[R,G,B]`)
- * @param {boolean} global - if this is for the global color table (`true`) or the local color table (`false`)
- * @param {number|null} colorIndex - if {@linkcode global} is `true`, this is the background color index, otherwise the transparency index, into {@linkcode colorTable} (or `null` if not available)
+ * @param {boolean} global - if {@linkcode colorTable} is the global color table (`true`) or the local color table (`false`)
+ * @param {number|null} backgroundColorIndex - the background color index or `null` if not available
+ * @param {number|null} transparentColorIndex - the transparency index or `null` if not available
  * @returns {[HTMLSpanElement]|HTMLLabelElement[]} the formatted list or a `<span>` representing an empty list
  */
-const genHTMLColorGrid=(colorTable,global,colorIndex)=>{
+const genHTMLColorGrid=(colorTable,global,backgroundColorIndex,transparentColorIndex)=>{
     "use strict";
     if(colorTable.length===0)return[Object.assign(document.createElement("span"),{textContent:`Empty list (see ${global?"loc":"glob"}al color table)`})];
     return colorTable.map((color,i)=>{
@@ -1224,15 +1241,19 @@ const genHTMLColorGrid=(colorTable,global,colorIndex)=>{
         input.value=color.reduce((o,v)=>o+v.toString(0x10).toUpperCase().padStart(2,'0'),"#");
         input.addEventListener("click",copyHexColorToClipboard,{passive:false});
         label.title=`Color index ${i} - click to copy hex code`;
-        if(i===colorIndex)
-            if(global){
+        if(i===backgroundColorIndex)
+            if(i===transparentColorIndex){
+                label.classList.add("background-flag","transparent-flag");
+                label.title+=" (used as background color and as an indication for transparency)";
+            }else{
                 label.classList.add("background-flag");
                 label.title+=" (used as background color)";
-            }else{
-                label.classList.add("transparent-flag");
-                label.title+=" (color indicates transparency)";
             }
-        label.append(`[${i}] `,input);
+        else if(i===transparentColorIndex){
+            label.classList.add("transparent-flag");
+            label.title+=" (color indicates transparency)";
+        }
+        label.append(`[${i}]`,input);
         return label;
     });
 };
@@ -1251,7 +1272,7 @@ const genHTMLAppExtList=appExt=>{
             fieldset=document.createElement("fieldset");
         spanDesc.title="Description";
         switch(ext.identifier+ext.authenticationCode){
-            case"NETSCAPE2.0":spanDesc.textContent=`loops the GIF ${(loop=>loop===0?"0 (infinite)":loop.toString(0xA))(ext.data[1]+(ext.data[2]<<8))} times`;break;
+            case"NETSCAPE2.0":spanDesc.textContent=`loops the GIF ${(loop=>loop===0?"0 (infinite)":formatNumFixed(loop))(ext.data[1]+(ext.data[2]<<8))} times`;break;
             default:spanDesc.textContent="unknown application extension";break;
         }
         input.type="button";
@@ -1261,12 +1282,12 @@ const genHTMLAppExtList=appExt=>{
             "use strict";
             //// const text=ext.data.reduce((o,v)=>o+v.toString(0x10).toUpperCase().padStart(2,'0'),"0x");
             const text=ext.data.reduce((o,v)=>o+String.fromCharCode(v),"");
-            navigator.clipboard.writeText(text).catch(reason=>console.warn("Couldn't copy %i Bytes of text, reason: %O",text.length,reason));
+            navigator.clipboard.writeText(text).catch(reason=>console.warn("Couldn't copy %s Bytes of text, reason: %O",formatNumFixed(text.length),reason));
         },{passive:true});
         fieldset.append(
             Object.assign(document.createElement("legend"),{
                 title:"Application-Extension identifier (8 characters) and authentication code (3 characters)",
-                textContent:`#${i} ${ext.identifier}${ext.authenticationCode}`
+                textContent:`#${formatNumFixed(i)} ${ext.identifier}${ext.authenticationCode}`
             }),spanDesc," ",input
         );
         return fieldset;
@@ -1283,9 +1304,9 @@ const genHTMLCommentList=comments=>{
     return comments.map((comment,i)=>{
         "use strict";
         const div=document.createElement("div");
-        div.title=`Comment #${i} found in GIF file at ${comment[0]}`;
+        div.title=`Comment #${formatNumFixed(i)} found in GIF file at ${comment[0]}`;
         div.append(
-            `#${i} at ${comment[0]}`,
+            `#${formatNumFixed(i)} at ${comment[0]}`,
             Object.assign(document.createElement("textarea"),{
                 readOnly:true,
                 textContent:comment[1],
@@ -1314,34 +1335,48 @@ const getHTMLUnExtList=unExt=>{
             "use strict";
             //// const text=ext[1].reduce((o,v)=>o+v.toString(0x10).toUpperCase().padStart(2,'0'),"0x");
             const text=ext[1].reduce((o,v)=>o+String.fromCharCode(v),"");
-            navigator.clipboard.writeText(text).catch(reason=>console.warn("Couldn't copy %i Bytes of text, reason: %O",text.length,reason));
+            navigator.clipboard.writeText(text).catch(reason=>console.warn("Couldn't copy %s Bytes of text, reason: %O",formatNumFixed(text.length),reason));
         },{passive:true});
         span.append(
-            `#${i} ${String.fromCharCode(ext[0])} `,
+            `#${formatNumFixed(i)} ${String.fromCharCode(ext[0])} `,
             Object.assign(document.createElement("small"),{textContent:`(0x${ext[0].toString(0x10).toUpperCase().padStart(2,'0')})`})
         );
         div.title="(Unknown) Extension identifier (1 character)";
         div.append(span,input);
         return div;
     });
-}
+};
 
 /**
- * ## Update all values in {@linkcode html.frame} and {@linkcode html.loop}
- * call at beginning of each frame\
- * _uses {@linkcode global.gifDecode}, {@linkcode global.frameIndex}, {@linkcode global.loops}, and {@linkcode global.loopCounter}_
+ * ## Update all values in {@linkcode html.frameTime} (except {@linkcode html.frameTime.timeTickmarks}), {@linkcode html.userInput} (if {@linkcode Frame.userInputDelayFlag} is given and {@linkcode html.userInput.lock} is OFF), {@linkcode html.frame} (except {@linkcode html.frame.canvas}), and {@linkcode html.loop} and transparent-flag in {@linkcode html.info.globalColorTable}
+ * call at beginning of each frame (before {@linkcode updateTimeInfo})\
+ * _uses {@linkcode global.gifDecode}, {@linkcode global.frameIndex}, {@linkcode global.time}, {@linkcode global.loops}, and {@linkcode global.loopCounter}_
  */
-const updateFrameInfo=()=>{
+const updateFrameInfoAndTimers=()=>{
     "use strict";
-    html.loop.loopText.textContent=global.loops===Infinity?"Infinite":(global.loops===0?"no":`${global.loopCounter} of ${global.loops}`);
+    html.loop.loopText.textContent=global.loops===Infinity?"Infinite":(global.loops===0?"no":`${formatNumFixed(global.loopCounter)} of ${formatNumFixed(global.loops)}`);
     const f=global.gifDecode.frames[global.frameIndex];
-    html.frame.canvas.putImageData(f.image,f.left,f.top);
-    html.frame.width.textContent=String(f.width);
-    html.frame.height.textContent=String(f.height);
-    html.frame.left.textContent=String(f.left);
-    html.frame.top.textContent=String(f.top);
-    html.frame.time.textContent=`${f.delayTime} ms`;
+    html.frameTime.timeRange.value=String(global.time);
+    html.frameTime.frameRange.value=String(global.frameIndex);
+    html.frameTime.time.textContent=formatNumFixed(global.time);
+    html.frameTime.frame.textContent=formatNumFixed(global.frameIndex);
+    if(html.userInput.area.classList.toggle("waiting",global.userInputWaiting=!global.userInputLock&&f.userInputDelayFlag)){
+        if(html.userInput.area.classList.toggle("infinity",global.userInputInfinity=f.delayTime===0)){
+            html.userInput.timeoutTime.textContent="∞";
+            html.userInput.timeout.removeAttribute("value");
+        }else html.userInput.timeoutTime.textContent=`-${formatNumFixed((html.userInput.timeout.max=f.delayTime)-(html.userInput.timeout.value=global.time-global.frameStarts[global.frameIndex]))}`;
+    }else{
+        html.userInput.area.classList.toggle("infinity",global.userInputInfinity=false);
+        html.userInput.timeoutTime.textContent="-";
+        html.userInput.timeout.value=0;
+    }
+    html.frame.width.textContent=formatNumFixed(f.width);
+    html.frame.height.textContent=formatNumFixed(f.height);
+    html.frame.left.textContent=formatNumFixed(f.left);
+    html.frame.top.textContent=formatNumFixed(f.top);
+    html.frame.time.textContent=`${formatNumFixed(f.delayTime)} ms`;
     html.frame.userInputFlag.checked=f.userInputDelayFlag;
+    html.frame.transparentColorIndex.textContent=f.transparentColorIndex==null?"-":String(f.transparentColorIndex);
     html.frame.disposalMethod.replaceChildren(...(()=>{switch(f.disposalMethod){
         case DisposalMethod.Unspecified:return[`[${DisposalMethod.Unspecified} unspecified]`,document.createElement("br"),"do nothing (keep image / combine with next frame)"];
         case DisposalMethod.DoNotDispose:return[`[${DisposalMethod.DoNotDispose} do not dispose]`,document.createElement("br"),"keep image / combine with next frame"];
@@ -1355,46 +1390,24 @@ const updateFrameInfo=()=>{
     }})());
     html.frame.frameReserved.textContent=`${f.reserved} (0b${f.reserved.toString(2).padStart(2,'0')})`;
     html.frame.frameGCReserved.textContent=`${f.GCreserved} (0b${f.GCreserved.toString(2).padStart(3,'0')})`;
-    html.frame.localColorTable.replaceChildren(...genHTMLColorGrid(f.localColorTable,false,f.transparentColorIndex));
-    if(!html.frame.text.area.classList.toggle("empty",f.plainTextData==null)){
-        //@ts-ignore `f.plainTextData` can not be `null` here
-        html.frame.text.text.textContent=f.plainTextData.text;
-        //@ts-ignore `f.plainTextData` can not be `null` here
-        html.frame.text.grid.width.textContent=String(f.plainTextData.width);
-        //@ts-ignore `f.plainTextData` can not be `null` here
-        html.frame.text.grid.height.textContent=String(f.plainTextData.height);
-        //@ts-ignore `f.plainTextData` can not be `null` here
-        html.frame.text.grid.left.textContent=String(f.plainTextData.left);
-        //@ts-ignore `f.plainTextData` can not be `null` here
-        html.frame.text.grid.top.textContent=String(f.plainTextData.top);
-        //@ts-ignore `f.plainTextData` can not be `null` here
-        html.frame.text.cell.width.textContent=String(f.plainTextData.charWidth);
-        //@ts-ignore `f.plainTextData` can not be `null` here
-        html.frame.text.cell.height.textContent=String(f.plainTextData.charHeight);
-        //@ts-ignore `f.plainTextData` can not be `null` here
-        html.frame.text.foreground.value=global.gifDecode.globalColorTable[f.plainTextData.foregroundColor].reduce((o,v)=>o+v.toString(0x10).toUpperCase().padStart(2,'0'),"#");
-        //@ts-ignore `f.plainTextData` can not be `null` here
-        html.frame.text.background.value=global.gifDecode.globalColorTable[f.plainTextData.backgroundColor].reduce((o,v)=>o+v.toString(0x10).toUpperCase().padStart(2,'0'),"#");
+    html.frame.localColorTable.replaceChildren(...genHTMLColorGrid(f.localColorTable,false,global.gifDecode.backgroundColorIndex,f.transparentColorIndex));
+    if(global.gifDecode.globalColorTable.length>0){
+        html.info.globalColorTable.querySelector(".transparent-flag")?.classList.remove("transparent-flag");
+        html.info.globalColorTable.children[f.transparentColorIndex??-1]?.classList.add("transparent-flag");
     }
-};
-/**
- * ## Update all values of {@linkcode html.frameTime} (except {@linkcode html.frameTime.timeTickmarks}) and {@linkcode html.userInput} (if {@linkcode Frame.userInputDelayFlag} is given and {@linkcode html.userInput.lock} is OFF)
- * call each frame (before {@linkcode updateTimeInfo})\
- * _uses {@linkcode global.gifDecode}, {@linkcode global.frameIndex}, and {@linkcode global.time}_
- */
-const updateTimeInfoFrame=()=>{
-    "use strict";
-    html.frameTime.timeRange.value=(html.frameTime.time.textContent=global.time.toFixed(0));
-    html.frameTime.frameRange.value=(html.frameTime.frame.textContent=String(global.frameIndex));
-    if(html.userInput.area.classList.toggle("waiting",global.userInputWaiting=!global.userInputLock&&global.gifDecode.frames[global.frameIndex].userInputDelayFlag)){
-        if(html.userInput.area.classList.toggle("infinity",global.userInputInfinity=global.gifDecode.frames[global.frameIndex].delayTime===0)){
-            html.userInput.timeoutTime.textContent="∞";
-            html.userInput.timeout.removeAttribute("value");
-        }else html.userInput.timeoutTime.textContent=`-${(html.userInput.timeout.max=global.gifDecode.frames[global.frameIndex].delayTime)-(html.userInput.timeout.value=global.time-global.frameStarts[global.frameIndex])}`;
-    }else{
-        html.userInput.area.classList.toggle("infinity",global.userInputInfinity=false);
-        html.userInput.timeoutTime.textContent="-";
-        html.userInput.timeout.value=0;
+    html.frame.text.area.classList.toggle("empty",f.plainTextData==null);
+    if(f.plainTextData!=null){
+        html.frame.text.text.textContent=f.plainTextData.text;
+        html.frame.text.grid.width.textContent=formatNumFixed(f.plainTextData.width);
+        html.frame.text.grid.height.textContent=formatNumFixed(f.plainTextData.height);
+        html.frame.text.grid.left.textContent=formatNumFixed(f.plainTextData.left);
+        html.frame.text.grid.top.textContent=formatNumFixed(f.plainTextData.top);
+        html.frame.text.cell.width.textContent=formatNumFixed(f.plainTextData.charWidth);
+        html.frame.text.cell.height.textContent=formatNumFixed(f.plainTextData.charHeight);
+        html.frame.text.foreground.value=(f.localColorTable.length>f.plainTextData.foregroundColor?f.localColorTable:global.gifDecode.globalColorTable)[f.plainTextData.foregroundColor].reduce((o,v)=>o+v.toString(0x10).toUpperCase().padStart(2,'0'),"#");
+        html.frame.text.background.value=(f.localColorTable.length>f.plainTextData.backgroundColor?f.localColorTable:global.gifDecode.globalColorTable)[f.plainTextData.backgroundColor].reduce((o,v)=>o+v.toString(0x10).toUpperCase().padStart(2,'0'),"#");
+        html.frame.text.foreground.classList.toggle("transparent-flag",f.plainTextData.foregroundColor===f.transparentColorIndex);
+        html.frame.text.background.classList.toggle("transparent-flag",f.plainTextData.backgroundColor===f.transparentColorIndex);
     }
 };
 /**
@@ -1404,9 +1417,11 @@ const updateTimeInfoFrame=()=>{
  */
 const updateTimeInfo=()=>{
     "use strict";
-    html.frameTime.timeRange.value=(html.frameTime.time.textContent=global.time.toFixed(0));
-    html.frameTime.frameRange.value=(html.frameTime.frame.textContent=String(global.frameIndex));
-    if(global.userInputWaiting&&!global.userInputInfinity)html.userInput.timeoutTime.textContent=`-${(html.userInput.timeout.max=global.gifDecode.frames[global.frameIndex].delayTime)-(html.userInput.timeout.value=global.time-global.frameStarts[global.frameIndex])}`;
+    html.frameTime.timeRange.value=String(global.time);
+    html.frameTime.frameRange.value=String(global.frameIndex);
+    html.frameTime.time.textContent=formatNumFixed(global.time);
+    html.frameTime.frame.textContent=formatNumFixed(global.frameIndex);
+    if(global.userInputWaiting&&!global.userInputInfinity)html.userInput.timeoutTime.textContent=`-${formatNumFixed((html.userInput.timeout.max=global.gifDecode.frames[global.frameIndex].delayTime)-(html.userInput.timeout.value=global.time-global.frameStarts[global.frameIndex]))}`;
 };
 
 //~  _____      _
@@ -1441,6 +1456,26 @@ blockInput(true);
 
 html.frame.text.foreground.addEventListener("click",copyHexColorToClipboard,{passive:false});
 html.frame.text.background.addEventListener("click",copyHexColorToClipboard,{passive:false});
+
+[
+    html.info.globalColorTable,
+    html.frame.localColorTable,
+    html.info.appExtList,
+    html.info.commentsList,
+    html.info.unExtList,
+    html.frame.disposalMethod,
+    html.frame.text.text
+].forEach(resizeable=>resizeable.addEventListener("dblclick",ev=>{
+    "use strict";
+    if(
+        ev.button!==0
+        ||ev.target!==resizeable
+        ||resizeable.offsetWidth-ev.offsetX>12
+        ||resizeable.offsetHeight-ev.offsetY>12
+    )return;
+    ev.preventDefault();
+    resizeable.style.height="";
+},{passive:false}));
 
 //~  _   _ _                                 _             _
 //~ | | | (_)                               | |           | |
@@ -1486,7 +1521,7 @@ html.view.fitWindow.addEventListener("click",()=>{
         html.view.fitWindow.dataset.toggle="1";
         html.view.fitWindow.value="🞑";
         html.view.htmlCanvas.classList.add("real");
-        html.view.view.title="Drag with left mouse button to move image (zooms with shift and moves drag origin with ctrl), reset position with double left click, zoom with mouse wheel (faster with shift and slower with alt), and reset zoom by clicking the mouse wheel";
+        html.view.view.title="Drag canvas when while holding left mouse button | Reset position with double left click || Zoom canvas by scrolling (shift: fast & alt: slow) with mouse wheel or dragging with left mouse button (up & down) while holding shift | Reset zoom with double left click while holding shift or clicking the mouse wheel";
         html.root.style.setProperty("--canvas-width",`${html.view.htmlCanvas.width}px`);
     }else{
         html.view.fitWindow.dataset.toggle="0";
@@ -1501,7 +1536,7 @@ html.frame.fitWindow.addEventListener("click",()=>{
         html.frame.fitWindow.dataset.toggle="1";
         html.frame.fitWindow.value="🞑";
         html.frame.htmlCanvas.classList.add("real");
-        html.frame.view.title="Drag with left mouse button to move image (zooms with shift and moves drag origin with ctrl), reset position with double left click, zoom with mouse wheel (faster with shift and slower with alt), and reset zoom by clicking the mouse wheel";
+        html.frame.view.title="Drag canvas when while holding left mouse button | Reset position with double left click || Zoom canvas by scrolling (shift: fast & alt: slow) with mouse wheel or dragging with left mouse button (up & down) while holding shift | Reset zoom with double left click while holding shift or clicking the mouse wheel";
         html.root.style.setProperty("--canvas-width",`${html.frame.htmlCanvas.width}px`);
     }else{
         html.frame.fitWindow.dataset.toggle="0";
@@ -1539,19 +1574,44 @@ html.frame.imgSmoothing.addEventListener("click",()=>{
 
 //~ canvas (syncronised) pan and zoom controls
 
-//~ dragging (zoom with shift and reset drag origin with ctrl)
-document.addEventListener("mousedown",ev=>{
+//~ dragging (drag-zoom with shift and move drag origin with ctrl + reset zoom with middle-mouse-button press)
+html.view.view.addEventListener("mousedown",ev=>{
     "use strict";
-    if(ev.button!==0||!(
-        ((ev.target===html.view.view||ev.target===html.view.htmlCanvas)&&(html.view.fitWindow.dataset.toggle??"0")==="1")
-        ||((ev.target===html.frame.view||ev.target===html.frame.htmlCanvas)&&(html.frame.fitWindow.dataset.toggle??"0")==="1")
-    ))return;
-    global.mouseX=ev.clientX;
-    global.mouseY=ev.clientY;
-    global.dragging=true;
-    global.draggingGIF=ev.target===html.view.view||ev.target===html.view.htmlCanvas;
-    document.documentElement.classList.add("grabbing");
-    ev.preventDefault();
+    if(
+        (html.view.fitWindow.dataset.toggle??"0")==="0"
+        ||ev.target instanceof HTMLInputElement&&html.view.controls.contains(ev.target)
+    )return;
+    if(ev.button===0){
+        global.mouseX=ev.clientX;
+        global.mouseY=ev.clientY;
+        global.draggingGIF=(global.dragging=true);
+        html.root.classList.add("grabbing");
+        ev.preventDefault();
+    }else if(ev.button===1){
+        global.scaler=0;
+        html.root.style.setProperty("--canvas-scaler","1");
+        setCanvasOffset(html.view.canvasStyle);
+        ev.preventDefault();
+    }
+},{passive:false});
+html.frame.view.addEventListener("mousedown",ev=>{
+    "use strict";
+    if(
+        (html.frame.fitWindow.dataset.toggle??"0")==="0"
+        ||ev.target instanceof HTMLInputElement&&html.frame.controls.contains(ev.target)
+    )return;
+    if(ev.button===0){
+        global.mouseX=ev.clientX;
+        global.mouseY=ev.clientY;
+        global.draggingGIF=!(global.dragging=true);
+        html.root.classList.add("grabbing");
+        ev.preventDefault();
+    }else if(ev.button===1){
+        global.scaler=0;
+        html.root.style.setProperty("--canvas-scaler","1");
+        setCanvasOffset(html.frame.canvasStyle);
+        ev.preventDefault();
+    }
 },{passive:false});
 document.addEventListener("mousemove",ev=>{
     "use strict";
@@ -1561,28 +1621,18 @@ document.addEventListener("mousemove",ev=>{
         global.mouseY=ev.clientY;
         return;
     }
+    const canvasStyle=global.draggingGIF?html.view.canvasStyle:html.frame.canvasStyle;
     if(ev.shiftKey){
-        const canvasStyle=global.draggingGIF?html.view.canvasStyle:html.frame.canvasStyle,
-            previousWidth=Number.parseFloat(canvasStyle.width),
+        const previousWidth=Number.parseFloat(canvasStyle.width),
             previousHeight=Number.parseFloat(canvasStyle.height);
-        html.root.style.setProperty("--canvas-scaler",String(
-            Math.exp((
-                global.scaler=Math.max(
-                    global.gifDecode.width*-.5,
-                    Math.min(
-                        global.gifDecode.width*.5,
-                        global.scaler-(ev.clientY-global.mouseY)
-                    )
-                )
-            )*.01)
-        ));
+        html.root.style.setProperty("--canvas-scaler",String(Math.exp((global.scaler=Math.max(-0x1F4,Math.min(0x1F4,global.scaler-(ev.clientY-global.mouseY))))*.01)));
         setCanvasOffset(
             canvasStyle,
             (Number.parseFloat(canvasStyle.width)*global.panLeft)/previousWidth,
             (Number.parseFloat(canvasStyle.height)*global.panTop)/previousHeight
         );
     }else setCanvasOffset(
-        global.draggingGIF?html.view.canvasStyle:html.frame.canvasStyle,
+        canvasStyle,
         global.panLeft+(ev.clientX-global.mouseX),
         global.panTop+(ev.clientY-global.mouseY)
     );
@@ -1591,68 +1641,72 @@ document.addEventListener("mousemove",ev=>{
 },{passive:true});
 document.addEventListener("mouseup",()=>{
     "use strict";
+    if(!global.dragging)return;
     global.dragging=false;
-    document.documentElement.classList.remove("grabbing");
+    html.root.classList.remove("grabbing");
 },{passive:true});
 
-//~ reset dragging
+//~ reset dragging (reset zoom with shift)
 html.view.view.addEventListener("dblclick",ev=>{
     "use strict";
-    if((html.view.fitWindow.dataset.toggle??"0")==="0")return;
-    setCanvasOffset(html.view.canvasStyle,0,0);
+    if(
+        (html.view.fitWindow.dataset.toggle??"0")==="0"
+        ||ev.target instanceof HTMLInputElement&&html.view.controls.contains(ev.target)
+    )return;
+    if(ev.shiftKey){
+        global.scaler=0;
+        html.root.style.setProperty("--canvas-scaler","1");
+        setCanvasOffset(html.view.canvasStyle);
+    }else setCanvasOffset(html.view.canvasStyle,0,0);
     ev.preventDefault();
 },{passive:false});
 html.frame.view.addEventListener("dblclick",ev=>{
     "use strict";
-    if((html.frame.fitWindow.dataset.toggle??"0")==="0")return;
-    setCanvasOffset(html.frame.canvasStyle,0,0);
+    if(
+        (html.frame.fitWindow.dataset.toggle??"0")==="0"
+        ||ev.target instanceof HTMLInputElement&&html.frame.controls.contains(ev.target)
+    )return;
+    if(ev.shiftKey){
+        global.scaler=0;
+        html.root.style.setProperty("--canvas-scaler","1");
+        setCanvasOffset(html.frame.canvasStyle);
+    }else setCanvasOffset(html.frame.canvasStyle,0,0);
     ev.preventDefault();
 },{passive:false});
 
-//~ zoom
-document.addEventListener("wheel",ev=>{
+//~ scroll-zoom
+html.view.view.addEventListener("wheel",ev=>{
     "use strict";
-    if(ev.ctrlKey||!(
-        ((ev.target===html.view.view||ev.target===html.view.htmlCanvas)&&(html.view.fitWindow.dataset.toggle??"0")==="1")
-        ||((ev.target===html.frame.view||ev.target===html.frame.htmlCanvas)&&(html.frame.fitWindow.dataset.toggle??"0")==="1")
-    ))return;
-    const canvasStyle=(ev.target===html.view.view||ev.target===html.view.htmlCanvas)?html.view.canvasStyle:html.frame.canvasStyle,
-        previousWidth=Number.parseFloat(canvasStyle.width),
-        previousHeight=Number.parseFloat(canvasStyle.height);
-    html.root.style.setProperty("--canvas-scaler",String(
-        Math.exp((
-            global.scaler=Math.max(
-                global.gifDecode.width*-.5,
-                Math.min(
-                    global.gifDecode.width*.5,
-                    global.scaler+(ev.deltaY*-(ev.shiftKey?.5:ev.altKey?.01:.1))
-                )
-            )
-        )*.01)
-    ));
+    if(
+        ev.ctrlKey
+        ||(html.view.fitWindow.dataset.toggle??"0")==="0"
+        ||ev.target instanceof HTMLInputElement&&html.view.controls.contains(ev.target)
+    )return;
+    const previousWidth=Number.parseFloat(html.view.canvasStyle.width),
+        previousHeight=Number.parseFloat(html.view.canvasStyle.height);
+    html.root.style.setProperty("--canvas-scaler",String(Math.exp((global.scaler=Math.max(-0x1F4,Math.min(0x1F4,global.scaler+(ev.deltaY*-(ev.shiftKey?.5:ev.altKey?.01:.1)))))*.01)));
     setCanvasOffset(
-        canvasStyle,
-        (Number.parseFloat(canvasStyle.width)*global.panLeft)/previousWidth,
-        (Number.parseFloat(canvasStyle.height)*global.panTop)/previousHeight
+        html.view.canvasStyle,
+        (Number.parseFloat(html.view.canvasStyle.width)*global.panLeft)/previousWidth,
+        (Number.parseFloat(html.view.canvasStyle.height)*global.panTop)/previousHeight
     );
     ev.preventDefault();
 },{passive:false});
-
-//~ reset zoom
-html.view.view.addEventListener("mousedown",ev=>{
+html.frame.view.addEventListener("wheel",ev=>{
     "use strict";
-    if(ev.button!==1||(html.view.fitWindow.dataset.toggle??"0")==="0")return;
-    global.scaler=0;
-    html.root.style.setProperty("--canvas-scaler","1");
-    setCanvasOffset(html.view.canvasStyle);
-    ev.preventDefault();
-},{passive:false});
-html.frame.view.addEventListener("mousedown",ev=>{
-    "use strict";
-    if(ev.button!==1||(html.frame.fitWindow.dataset.toggle??"0")==="0")return;
-    global.scaler=0;
-    html.root.style.setProperty("--canvas-scaler","1");
-    setCanvasOffset(html.frame.canvasStyle);
+    if(
+        ev.ctrlKey
+        ||(html.frame.fitWindow.dataset.toggle??"0")==="0"
+        ||ev.target instanceof HTMLInputElement&&html.frame.controls.contains(ev.target)
+    )return;
+    const previousWidth=Number.parseFloat(html.frame.canvasStyle.width),
+        previousHeight=Number.parseFloat(html.frame.canvasStyle.height);
+    html.root.style.setProperty("--canvas-scaler",String(Math.exp((global.scaler=Math.max(-0x1F4,Math.min(0x1F4,global.scaler+(ev.deltaY*-(ev.shiftKey?.5:ev.altKey?.01:.1)))))*.01)));
+    setCanvasOffset(
+        html.frame.canvasStyle,
+        (Number.parseFloat(html.frame.canvasStyle.width)*global.panLeft)/previousWidth,
+        (Number.parseFloat(html.frame.canvasStyle.height)*global.panTop)/previousHeight
+    );
     ev.preventDefault();
 },{passive:false});
 
@@ -1770,7 +1824,7 @@ html.import.confirm.addEventListener("click",async()=>{
             //~ canvases are cleared automatically when their size is set
         }
         html.loading.gifProgress.value=(html.loading.frameProgress.value=percentageRead);
-        html.loading.gifText.textContent=(html.loading.frameText.textContent=`Frame ${String(frameIndex+1).padStart(2,'0')} | ${(percentageRead*0x64).toFixed(2).padStart(5,'0')}%`);
+        html.loading.gifText.textContent=(html.loading.frameText.textContent=`Frame ${formatNumFixed(frameIndex+1)} | ${formatNumFixed(percentageRead*0x64,2)}%`);
         html.view.canvas.clearRect(0,0,html.view.htmlCanvas.width,html.view.htmlCanvas.height);
         html.view.canvas.putImageData(frame,framePos[0],framePos[1]);
         if(html.details.frameView.open){
@@ -1781,8 +1835,8 @@ html.import.confirm.addEventListener("click",async()=>{
         await new Promise(E=>setTimeout(E,0));
     },(loaded,total)=>{
         "use strict";
-        if(total==null)console.log(`%cFetching GIF: %i bytes loaded`,"background-color:#000;color:#0A0;",loaded);
-        else console.log(`%cFetching GIF: %i of %i bytes loaded (%s %%)`,"background-color:#000;color:#0A0;",loaded,total,(loaded*0x64/total).toFixed(2).padStart(6,' '));
+        if(total==null)console.log(`%cFetching GIF: %s bytes loaded`,"background-color:#000;color:#0A0;",formatNumFixed(loaded));
+        else console.log(`%cFetching GIF: %s of %s bytes loaded (%s %%)`,"background-color:#000;color:#0A0;",formatNumFixed(loaded),formatNumFixed(total),formatNumFixed(loaded*0x64/total,2));
     }).then(gif=>{
         "use strict";
         //~ reset variables and UI
@@ -1794,35 +1848,36 @@ html.import.confirm.addEventListener("click",async()=>{
         html.loading.frame.classList.add("done");
         //~ update GIF info
         html.info.fileName.textContent=fileName??"";
-        html.info.totalWidth.textContent=String(global.gifDecode.width);
-        html.info.totalHeight.textContent=String(global.gifDecode.height);
-        html.info.totalFrames.textContent=String(global.gifDecode.frames.length);
-        html.info.totalTime.textContent=global.gifDecode.totalTime===Infinity?"Infinity (waits for user input)":`${global.gifDecode.totalTime} ms`;
-        if(global.gifDecode.pixelAspectRatio===0||global.gifDecode.pixelAspectRatio===1)html.info.pixelAspectRatio.textContent="1:1 (square pixels)";
+        html.info.totalWidth.textContent=formatNumFixed(gif.width);
+        html.info.totalHeight.textContent=formatNumFixed(gif.height);
+        html.info.totalFrames.textContent=formatNumFixed(gif.frames.length);
+        html.info.totalTime.textContent=gif.totalTime===Infinity?"Infinity (waits for user input)":`${formatNumFixed(gif.totalTime)} ms`;
+        if(gif.pixelAspectRatio===0||gif.pixelAspectRatio===1)html.info.pixelAspectRatio.textContent="1:1 (square pixels)";
         else{
-            const fracGCD=0x40/gcd(global.gifDecode.pixelAspectRatio*0x40,0x40);
-            html.info.pixelAspectRatio.textContent=`${global.gifDecode.pixelAspectRatio*fracGCD}:${fracGCD} (${global.gifDecode.pixelAspectRatio}:1)`;
+            const fracGCD=0x40/gcd(gif.pixelAspectRatio*0x40,0x40);
+            html.info.pixelAspectRatio.textContent=`${gif.pixelAspectRatio*fracGCD}:${fracGCD} (${gif.pixelAspectRatio}:1)`;
         }
-        html.info.colorRes.textContent=`${global.gifDecode.colorRes} bits`;
-        html.info.globalColorTable.replaceChildren(...genHTMLColorGrid(global.gifDecode.globalColorTable,true,global.gifDecode.backgroundColorIndex));
-        html.info.appExtList.replaceChildren(...genHTMLAppExtList(global.gifDecode.applicationExtensions));
-        html.info.commentsList.replaceChildren(...genHTMLCommentList(global.gifDecode.comments));
-        html.info.unExtList.replaceChildren(...getHTMLUnExtList(global.gifDecode.unknownExtensions));
+        html.info.colorRes.textContent=`${gif.colorRes} bits`;
+        html.info.backgroundColorIndex.textContent=gif.backgroundColorIndex==null?"-":String(gif.backgroundColorIndex);
+        html.info.globalColorTable.replaceChildren(...genHTMLColorGrid(gif.globalColorTable,true,gif.backgroundColorIndex,gif.frames[0].transparentColorIndex));
+        html.info.appExtList.replaceChildren(...genHTMLAppExtList(gif.applicationExtensions));
+        html.info.commentsList.replaceChildren(...genHTMLCommentList(gif.comments));
+        html.info.unExtList.replaceChildren(...getHTMLUnExtList(gif.unknownExtensions));
         //~ update time info (init)
         let timeSum=0;
-        html.frameTime.timeTickmarks.replaceChildren(...global.gifDecode.frames.map((v,j)=>{
+        html.frameTime.timeTickmarks.replaceChildren(...gif.frames.map((v,j)=>{
             const option=document.createElement("option");
-            option.title=`Frame [${j}]`;
+            option.title=`Frame [${formatNumFixed(j)}]`;
             option.text=String(timeSum);
             global.frameStarts[j]=timeSum;
             timeSum+=v.delayTime;
             return option;
         }));
         html.frameTime.timeRange.max=String(global.totalTime=timeSum);
-        html.frameTime.frameRange.max=String(global.gifDecode.frames.length-1);
-        updateFrameInfo();
-        updateTimeInfoFrame();
+        html.frameTime.frameRange.max=String(gif.frames.length-1);
+        updateFrameInfoAndTimers();
         //~ draw first frame
+        // TODO draw correctly after disposal method of last frame (use canvas content from loading/decoding above)
         const f=gif.frames[0];
         //~ save image data if needed
         if(f.disposalMethod===DisposalMethod.RestorePrevious){
@@ -1861,7 +1916,7 @@ html.import.confirm.addEventListener("click",async()=>{
             global.textCanvas.letterSpacing=`${f.plainTextData.charWidth-width}px`;
             //~ draw background box
             if(f.transparentColorIndex!==f.plainTextData.backgroundColor){
-                global.textCanvas.fillStyle=global.gifDecode.globalColorTable[f.plainTextData.backgroundColor].reduce((o,v)=>o+v.toString(0x10).padStart(2,'0'),'#');
+                global.textCanvas.fillStyle=gif.globalColorTable[f.plainTextData.backgroundColor].reduce((o,v)=>o+v.toString(0x10).padStart(2,'0'),'#');
                 global.textCanvas.fillRect(0,0,global.textCanvasObj.width,global.textCanvasObj.height);
             }else global.textCanvas.clearRect(0,0,global.textCanvasObj.width,global.textCanvasObj.height);
             //~ draw/cutout text
@@ -1872,7 +1927,7 @@ html.import.confirm.addEventListener("click",async()=>{
                     global.textCanvas.globalCompositeOperation="source-over";
                 }
             }else{
-                global.textCanvas.fillStyle=global.gifDecode.globalColorTable[f.plainTextData.foregroundColor].reduce((o,v)=>o+v.toString(0x10).padStart(2,'0'),'#');
+                global.textCanvas.fillStyle=gif.globalColorTable[f.plainTextData.foregroundColor].reduce((o,v)=>o+v.toString(0x10).padStart(2,'0'),'#');
                 for(let r=0;r<rows;r++)global.textCanvas.fillText(txt.substring(cols*r,cols*(r+2)),0,f.plainTextData.charHeight*r);
             }
             //~ apply/draw to GIF canvas
@@ -1888,7 +1943,14 @@ html.import.confirm.addEventListener("click",async()=>{
         html.import.menu.showModal();
         html.loading.gif.classList.add("done");
         html.loading.frame.classList.add("done");
-        blockInput(false);
+        if(global.gifDecode==null)html.open.disabled=false;
+        else{
+            html.frame.htmlCanvas.width=(html.view.htmlCanvas.width=global.gifDecode.width);
+            html.frame.htmlCanvas.height=(html.view.htmlCanvas.height=global.gifDecode.height);
+            html.frameTime.frameRange.value=String(global.frameIndexLast=(global.frameIndex=0));
+            html.frameTime.frameRange.dispatchEvent(new InputEvent("input"));
+            blockInput(false);
+        }
         html.import.abort.focus();
         html.root.dispatchEvent(new CustomEvent("loaderror"));
     });
@@ -1906,22 +1968,28 @@ html.import.confirm.addEventListener("click",async()=>{
 html.frameTime.frameRange.addEventListener("input",()=>{
     "use strict";
     if(global.playback!==0)html.controls.pause.click();
-    html.frameTime.timeRange.value=(html.frameTime.time.textContent=String(global.time=global.frameStarts[global.frameIndex=Number(html.frameTime.frame.textContent=html.frameTime.frameRange.value)]));
+    html.frameTime.timeRange.value=String(global.time=global.frameStarts[global.frameIndex=Number(html.frameTime.frameRange.value)]);
+    html.frameTime.frame.textContent=formatNumFixed(global.frameIndex);
+    html.frameTime.time.textContent=formatNumFixed(global.time);
 },{passive:true});
 
 html.controls.seekStart.addEventListener("click",()=>{
     "use strict";
     if(global.playback!==0)html.controls.pause.click();
     if(!global.loopForce&&Number.isFinite(global.loops))global.loopCounter=0;
-    html.frameTime.frameRange.value=(html.frameTime.frame.textContent=String(global.frameIndex=0));
-    html.frameTime.timeRange.value=(html.frameTime.time.textContent=String(global.time=global.frameStarts[global.frameIndex]));
+    html.frameTime.frameRange.value=String(global.frameIndex=0);
+    html.frameTime.timeRange.value=String(global.time=global.frameStarts[global.frameIndex]);
+    html.frameTime.frame.textContent=formatNumFixed(global.frameIndex);
+    html.frameTime.time.textContent=formatNumFixed(global.time);
 },{passive:true});
 html.controls.seekEnd.addEventListener("click",()=>{
     "use strict";
     if(global.playback!==0)html.controls.pause.click();
     if(!global.loopForce&&Number.isFinite(global.loops))global.loopCounter=global.loops;
-    html.frameTime.frameRange.value=(html.frameTime.frame.textContent=String(global.frameIndex=global.gifDecode.frames.length-1));
-    html.frameTime.timeRange.value=(html.frameTime.time.textContent=String(global.time=global.frameStarts[global.frameIndex]));
+    html.frameTime.frameRange.value=String(global.frameIndex=global.gifDecode.frames.length-1);
+    html.frameTime.timeRange.value=String(global.time=global.frameStarts[global.frameIndex]);
+    html.frameTime.frame.textContent=formatNumFixed(global.frameIndex);
+    html.frameTime.time.textContent=formatNumFixed(global.time);
 },{passive:true});
 
 html.controls.seekNext.addEventListener("click",()=>{
@@ -1931,8 +1999,10 @@ html.controls.seekNext.addEventListener("click",()=>{
         global.frameIndex=0;
         if(!global.loopForce&&Number.isFinite(global.loops)&&++global.loopCounter>global.loops)global.loopCounter=0;
     }
-    html.frameTime.frameRange.value=(html.frameTime.frame.textContent=String(global.frameIndex));
-    html.frameTime.timeRange.value=(html.frameTime.time.textContent=String(global.time=global.frameStarts[global.frameIndex]));
+    html.frameTime.frameRange.value=String(global.frameIndex);
+    html.frameTime.timeRange.value=String(global.time=global.frameStarts[global.frameIndex]);
+    html.frameTime.frame.textContent=formatNumFixed(global.frameIndex);
+    html.frameTime.time.textContent=formatNumFixed(global.time);
 },{passive:true});
 html.controls.seekPrevious.addEventListener("click",()=>{
     "use strict";
@@ -1941,8 +2011,10 @@ html.controls.seekPrevious.addEventListener("click",()=>{
         global.frameIndex=global.gifDecode.frames.length-1;
         if(!global.loopForce&&Number.isFinite(global.loops)&&--global.loopCounter<0)global.loopCounter=global.loops;
     }
-    html.frameTime.frameRange.value=(html.frameTime.frame.textContent=String(global.frameIndex));
-    html.frameTime.timeRange.value=(html.frameTime.time.textContent=String(global.time=global.frameStarts[global.frameIndex]));
+    html.frameTime.frameRange.value=String(global.frameIndex);
+    html.frameTime.timeRange.value=String(global.time=global.frameStarts[global.frameIndex]);
+    html.frameTime.frame.textContent=formatNumFixed(global.frameIndex);
+    html.frameTime.time.textContent=formatNumFixed(global.time);
 },{passive:true});
 
 html.controls.pause.addEventListener("click",()=>{
@@ -2032,10 +2104,10 @@ html.loop.toggle.addEventListener("click",()=>{
     html.details.frameText.toggleAttribute("open",urlParam.frameText);
     if(urlParam.import){
         html.import.menu.showModal();
-        blockInput(false);
+        html.open.disabled=false;
         if(urlParam.url!=null){
             html.import.url.value=urlParam.url;
-            html.import.url.dispatchEvent(new Event("change"));
+            html.import.url.dispatchEvent(new InputEvent("change"));
         }
         return;
     }
@@ -2102,17 +2174,7 @@ html.loop.toggle.addEventListener("click",()=>{
         if(urlParam.zoom!==0){
             const previousWidth=Number.parseFloat(canvasStyle.width),
                 previousHeight=Number.parseFloat(canvasStyle.height);
-            html.root.style.setProperty("--canvas-scaler",String(
-                Math.exp((
-                    global.scaler=Math.max(
-                        global.gifDecode.width*-.5,
-                        Math.min(
-                            global.gifDecode.width*.5,
-                            urlParam.zoom
-                        )
-                    )
-                )*.01)
-            ));
+            html.root.style.setProperty("--canvas-scaler",String(Math.exp((global.scaler=Math.max(-0x1F4,Math.min(0x1F4,urlParam.zoom)))*.01)));
             //~ wait for one cycle
             await new Promise(E=>setTimeout(E,0));
             setCanvasOffset(
@@ -2137,7 +2199,7 @@ window.requestAnimationFrame(async function loop(time){
     const delta=time-global.lastAnimationFrameTime,
         previousPlayback=global.playback*global.speed;
     global.fps.add(delta);
-    html.view.fps.textContent=(html.frame.fps.textContent=`FPS ${global.fps.toString().padStart(3,' ')}`);
+    html.view.fps.textContent=(html.frame.fps.textContent=`FPS ${formatNumFixed(global.fps.avg).padStart(3,' ')}`);
     // TODO make calculating frame index/time and rendering into functions for the GIFdecodeModule.js and the GIF decode section at the beginning of this file
     // TODO >> seekGIFplayback(GIF,loopIndex,frameIndex,timestamp,seekTime,skipUserInput?)=>[newLoopIndex,newFrameIndex,newTimestamp,paused]
     // TODO >> renderGIFplayback(GIF,frameIndexCurrent,frameIndexNew,???)=>??? ~ maybe generator function
@@ -2227,15 +2289,15 @@ window.requestAnimationFrame(async function loop(time){
     await Promise.resolve();
     //~ render frame and update time
     if(global.frameIndex!==global.frameIndexLast){
-        updateFrameInfo();
-        updateTimeInfoFrame();
+        updateFrameInfoAndTimers();
         // TODO ? toggle=1 for clear at [0] (ignores last disposal nmethod) ~ seeks from [0] to frameIndex if frameIndex < frameIndexLast ~ also more performant for reverse play
-        // TODO ? toggle=0 for true inverse render ~ when reverse play render from frameIndexLast to frameIndex ~ disposal methods are also in reverse
+        // TODO ? toggle=0 for true inverse render ~ when reverse play render from frameIndexLast to frameIndex ~ disposal methods are also in reverse ~ probably faster but visually unexpected
+        // TODO use getCSSColor() to get correct CSS color of current frame
         let f=global.gifDecode.frames[global.frameIndexLast];
         //~ restore saved image data or background color if available
         switch(f.disposalMethod){
             case DisposalMethod.RestorePrevious:
-                // TODO test if this will replace correctly with alpha channel
+                // TODO test if this will replace correctly with alpha channel (replace not additive)
                 html.view.canvas.globalCompositeOperation="copy";
                 html.view.canvas.drawImage(global.undisposedCanvasObj,...global.undisposedPos);
                 html.view.canvas.globalCompositeOperation="source-over";

@@ -173,22 +173,14 @@ div#frameView{
 }
 div#gifView,
 div#frameView{
-    --checker-a: #EEE;
-    --checker-b: #FFF;
-    --checker-a: #888;
-    --checker-b: #AAA;
-    --checker-a: #222;
-    --checker-b: #333;
-    --checker-a: transparent;
-    --checker-b: transparent;
-    --checker-len: 10px;
-    background-image:
-        linear-gradient( 45deg, var(--checker-a) 25%,     transparent  25%),
-        linear-gradient(135deg, var(--checker-a) 25%,     transparent  25%),
-        linear-gradient( 45deg,     transparent  75%, var(--checker-a) 75%),
-        linear-gradient(135deg, var(--checker-b) 75%, var(--checker-a) 75%);
-    background-size: calc(2 * var(--checker-len)) calc(2 * var(--checker-len));
-    background-position: 0 0, var(--checker-len) 0, var(--checker-len) var(--checker-len), 0 var(--checker-len);
+    /* TODO remove when bg-color-chooser-menu is implemented */
+    --checker-a: #EEE;--checker-b: #FFF;
+    --checker-a: #888;--checker-b: #AAA;
+    --checker-a: #222;--checker-b: #333;
+    --checker-a: #000;--checker-b: #111;
+    --checker-a: transparent;--checker-b: transparent;
+    --checker-len: 1rem;
+    background: repeating-conic-gradient(var(--checker-a) 0 25%, var(--checker-b) 0 50%) 0 / var(--checker-len) var(--checker-len);
     padding: .5rem;
     /*~ border-radius: .5rem; (non-zero values) can result in subpixel aliasing */
     box-sizing: border-box;
@@ -411,9 +403,43 @@ div#frameTextArea{
     align-items: stretch;
     place-content: safe center;
 }
-/* TODO frame info area ~ disposal method field limit to 15.5*3rem */
-div#frameTextArea.empty td[id],
-div#frameTextArea.empty td:has([id]){opacity: .25;}
+div#gifInfoArea tr>td:last-child,
+div#frameInfoArea tr>td:last-child,
+div#frameTextArea tr>td:last-child{
+    display: block;
+    width: 14rem;
+    max-height: 3rem;
+    overflow: auto;
+}
+div#frameTextArea tr>td#frameText,
+div#frameInfoArea tr>td#frameDisposalMethod{
+    resize: vertical;
+    height: 3rem;
+    min-height: 2rem;
+    max-height: 8rem;
+}
+div#frameTextArea.empty tr>td:last-child{opacity: .25;}
+div#globalColorTable,
+div#frameColorTable,
+div#appExtList,
+div#commentsList,
+div#unExtList{
+    resize: vertical;
+    height: min-content;
+    min-height: 1.5rem;
+    max-height: 20rem;
+    overflow: auto;
+    scrollbar-gutter: stable;
+}
+div#globalColorTable:not(:has(span)),
+div#frameColorTable:not(:has(span)){height: 8rem;}
+div#globalColorTable::-webkit-resizer,
+div#frameColorTable::-webkit-resizer,
+div#appExtList::-webkit-resizer,
+div#commentsList::-webkit-resizer,
+div#unExtList::-webkit-resizer,
+td#frameDisposalMethod::-webkit-resizer,
+td#frameText::-webkit-resizer{background: repeating-linear-gradient(#AAA 0 1px, transparent 0 4px) bottom right / 12px 12px no-repeat;}
 div#globalColorTable,
 div#frameColorTable{
     display: grid;
@@ -422,15 +448,6 @@ div#frameColorTable{
     justify-items: stretch;
     align-content: safe center;
     justify-content: space-between;
-}
-div#globalColorTable,
-div#frameColorTable,
-div#appExtList,
-div#commentsList,
-div#unExtList{
-    max-height: 8rem;
-    overflow: auto;
-    scrollbar-gutter: stable both-edges;
 }
 div#globalColorTable>span,
 div#frameColorTable>span,
@@ -447,8 +464,16 @@ div#frameColorTable>label{
 }
 div#globalColorTable>label.background-flag>input,
 div#frameColorTable>label.background-flag>input{background-color: #000;}
+div#frameTextArea input#frameTextCharForeground.transparent-flag,
+div#frameTextArea input#frameTextCharBackground.transparent-flag,
 div#globalColorTable>label.transparent-flag>input,
-div#frameColorTable>label.transparent-flag>input{background: repeating-conic-gradient(#000 0% 25%, #444 0% 50%) 50% / 10px 10px;}
+div#frameColorTable>label.transparent-flag>input{background: repeating-conic-gradient(#000 0 25%, #555 0 50%) 0 / 10px 10px;}
+div#globalColorTable>label.background-flag.transparent-flag>input,
+div#frameColorTable>label.background-flag.transparent-flag>input{
+    background:
+        linear-gradient(135deg, #000 50%, transparent 50%),
+        repeating-conic-gradient(#000 0 25%, #555 0 50%) 0 / 10px 10px;
+}
 div#appExtList>fieldset{
     align-self: stretch;
     display: grid;

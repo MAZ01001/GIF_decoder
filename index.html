@@ -13,26 +13,68 @@
     <div id="box">
         <h1 id="gifHeading">GIF<span class="hint" title="Only supports GIF files with version &quot;GIF89a&quot;">*</span> decoder</h1>
         <!-- TODO
+            ! add `avgAlpha` of `decodeGIF` to `urlParam`
             ! warning BEFORE decoding GIFs over ~ 10MiB
-            ~ timeTickmarks indicate frame timestamps ~ ignore for user-input-flags
-            ~ use offscreen canvas for special disposal method case (3)
+            ! add toggles to URL parameters & as button left of playback controls
+            - >> (ON) for clear at [0] (ignores last disposal nmethod) ~ seeks from [0] to frameIndex if frameIndex < frameIndexLast ~ also more performant for reverse play
+            - >> (ON) for forcing background color to be transparent when restoring to background color
+            - >> (OFF) for true inverse render ~ when reverse play render from frameIndexLast to frameIndex ~ disposal methods are also in reverse ~ probably faster but visually unexpected
+            - >> (OFF) for no drawing text extension
+            ! new canvas button to change canvas background/-color
+            - >> dialog menu with some options and a live preview
+            - >> toggle to use backgroud color index (disabled in OFF state if not available and disables all following inputs if toggled ON)
+            - >> >> color input for background color
+            - >> >> checkbox to toggle checker texture and enable checker color (second color input)
+            - >> >> presets white/bright/dark/black/transparent/custom
+            - >> >> >> checker-a, -b, and -len (see CSS#L176)
+            ! implement pixel aspect ratio via CSS transforms
+            ! implement failsaves when loading/reading corrupted/incomplete files
             ? auto hide gifView buttons after 1sec no mouse movement (js mouse move) or mouse leaves div (css hover)
             ? useless/verbose stats
             ? (AppExt) raw bytes as hex string (textarea) ~ instead of copy button ? both
-            ? maybe add scroll shadows ↓
-            ?>> CSS style   https://github.com/MAZ01001/MAZ01001.github.io/blob/master/index.html#L48-L60
-            ?>> JS function https://github.com/MAZ01001/MAZ01001.github.io/blob/master/index.html#L250-L270
-            ?>> JS event    https://github.com/MAZ01001/MAZ01001.github.io/blob/master/index.html#L318-L320
-            ! force-clear-last-frame flag for URL & toggle button left of playback controls (default off)
             ? add [byte position] to title ~ comment, application/unkown extension, and global/local color table
-            ? new canvas button to change canvas background/-color
-            - >> dialog menu with some options and a live preview
-            - >> pause playback and use screenshoot of canvas as preview (slider for screenshoot opacity | image above inputs)
-            - >> toggle to use backgroud color index (disabled in OFF state if not available and disables all following inputs if toggled ON)
-            - >> color input for background color
-            - >> checkbox to toggle checker texture and enable checker color (second color input)
-            - >> number input for checker size (~ 1/10 rem)
-            ! add `avgAlpha` (`decodeGIF`) to `urlParam`
+            ? create example GIF file with all known features - https://www.w3.org/Graphics/GIF/spec-gif89a.txt - via GIMP and then edit in HEX-editor ~ create empty file with new size then override all bytes (since vscode-hexeditor can't add bytes...yet)
+            - >> - 500*500 px total
+            - >> - 30 frames
+            - >>   - irregular frame delays
+            - >>   - not full frame changes (frames are smaller than whole GIF)
+            - >> - every disposal method
+            - >>   - ! requires some planning in the frame image contents ~ visually
+            - >> - loops 3 times
+            - >> - global color table and at least one local color table (can be a copy of global color table)
+            - >>   - use transparency of local color table
+            - >> - user input flag on at least two frames (with and without timeout)
+            - >> - unknown app extension
+            - >>   - 0x21FF0C544553545F4150502045585400
+            - >> - text extensions for first 10 frames (graphics control extension > image descriptor > [text extension] > image data)
+            - >>   - 0x21010C0A000A00200010000408 <forground_global_color_index_1B> <background_global_color_index_1B> 105445585420666F726672616D655B305D00
+            - >>   - 0x21010C0A000A00200010000408 <forground_global_color_index_1B> <background_global_color_index_1B> 105445585420666F726672616D655B315D00
+            - >>   - 0x21010C0A000A00200010000408 <forground_global_color_index_1B> <background_global_color_index_1B> 105445585420666F726672616D655B325D00
+            - >>   - 0x21010C0A000A00200010000408 <forground_global_color_index_1B> <background_global_color_index_1B> 105445585420666F726672616D655B335D00
+            - >>   - 0x21010C0A000A00200010000408 <forground_global_color_index_1B> <background_global_color_index_1B> 105445585420666F726672616D655B345D00
+            - >>   - 0x21010C0A000A00200010000408 <forground_global_color_index_1B> <background_global_color_index_1B> 105445585420666F726672616D655B355D00
+            - >>   - 0x21010C0A000A00200010000408 <forground_global_color_index_1B> <background_global_color_index_1B> 105445585420666F726672616D655B365D00
+            - >>   - 0x21010C0A000A00200010000408 <forground_global_color_index_1B> <background_global_color_index_1B> 105445585420666F726672616D655B375D00
+            - >>   - 0x21010C0A000A00200010000408 <forground_global_color_index_1B> <background_global_color_index_1B> 105445585420666F726672616D655B385D00
+            - >>   - 0x21010C0A000A00200010000408 <forground_global_color_index_1B> <background_global_color_index_1B> 105445585420666F726672616D655B395D00
+            - >> - comment after image descriptor and before image data for the last frame
+            - >>   - 0x21FE4D5445535420636F6D6D656E740D0A616674657220696D6167652064657363726970746F7220616E64206265666F726520696D616765206461746120666F7220746865206C617374206672616D6500
+            - >> - comment after image descriptor and before image data for the 10th frame
+            - >>   - 0x21FE4D5445535420636F6D6D656E740D0A616674657220696D6167652064657363726970746F7220616E64206265666F726520696D616765206461746120666F72207468652031307468206672616D6500
+            - >> - comment after image descriptor and before image data for the 100th frame
+            - >>   - 0x21FE4E5445535420636F6D6D656E740D0A616674657220696D6167652064657363726970746F7220616E64206265666F726520696D616765206461746120666F7220746865203130307468206672616D6500
+            - >> - unknown extensions (after image data (and app extension) of frames 0-3)
+            - >>   - unknown extension 0
+            - >>     - 0x2154115445535420657874656E73696F6E20233000
+            - >>   - unknown extension 1
+            - >>     - 0x2145115445535420657874656E73696F6E20233100
+            - >>   - unknown extension 2
+            - >>     - 0x2153115445535420657874656E73696F6E20233200
+            - >>   - unknown extension 3
+            - >>     - 0x2154115445535420657874656E73696F6E20233300
+            ? make calculating frame index/time and rendering into functions for the GIFdecodeModule.js and the GIF decode section at the beginning of this file
+            - >> seekGIFplayback(GIF,loopIndex,loopLength,currentFrameIndex,currentTime,seekDeltaTime,skipUserInput?)=>[newLoopIndex,newFrameIndex,newTime,paused]
+            - >> renderGIFplayback(GIF,currentFrameIndex,newFrameIndex,options:{viewCanvas,frameCanvas,storeCanvas,forceClearStart,forceTransparentBackground,reverseRender,???})=>??? ~ maybe generator function
         -->
         <div id="gifView" title="GIF render canvas">
             <canvas id="htmlCanvas">Your browser does not support the HTML canvas element</canvas>

@@ -23,9 +23,8 @@
     <div id="box">
         <h1 id="gifHeading">GIF<span class="hint" title="Only supports GIF files with version &quot;GIF89a&quot;">*</span> decoder</h1>
         <!-- TODO
-            ! add `avgAlpha` of `decodeGIF` to `urlParam`
-            ! warning BEFORE decoding GIFs over ~ 10MiB
             ! add toggles to URL parameters & as button left of playback controls
+            - >> ? when toggling any of these → redraw GIF ?!
             - >> (ON) for clear at [0] (ignores last disposal nmethod) ~ seeks from [0] to frameIndex if frameIndex < frameIndexLast ~ also more performant for reverse play
             - >> (ON) for forcing background color to be transparent when restoring to background color
             - >> (OFF) for true inverse render ~ when reverse play render from frameIndexLast to frameIndex ~ disposal methods are also in reverse ~ probably faster but visually unexpected
@@ -102,6 +101,16 @@
         <label for="timeRange" title="Current timestamp (with frame timestamps in tickmarks below)">Time: <input type="range" id="timeRange" list="timeTickmarks" aria-disabled="true" tabindex="-1"> <span id="time">-</span> ms</label>
         <datalist id="timeTickmarks"></datalist>
         <label for="frameRange" title="Current frame index (zero-based)">Frame: <input type="range" id="frameRange" step="1"> <span id="frame">-</span></label>
+        <div id="overrideOptions">
+            <input type="button" id="overrideMenu" data-toggle="0" value="Override">
+            <div>
+                <p>Override default render behaviour <small>(WIP)</small></p>
+                <label for="overrideClear" title="Allways clears the canvas between the last and the first frame - ignoring the disposal method of the last frame"><input type="checkbox" id="overrideClear"> Clear canvas on frame 0 <small>(slightly improves the performance impact of reverse playback)</small></label>
+                <label for="overrideBackground" title="Allways uses transparent when restoring to backgrond color (sets drawn pixels transparent) - ignoring the background color and the transparency color of the current frame"><input type="checkbox" id="overrideBackground"> Restoring to background color is allways transparent</label>
+                <label for="overrideText" title="Ignores the text extension of the current frame"><input type="checkbox" id="overrideText"> Don't render text extension</label>
+                <label for="overrideRender" title="Renders frames in reverse order (to the left on the timeline instead of to the right) - may look very weird"><input type="checkbox" id="overrideRender"> Inverse render order <small>(just for fun - reverse performance impact for forward/reverse playback)</small></label>
+            </div>
+        </div>
         <div id="playerControls" class="paused">
             <input type="button" id="seekStart" value="⏮" title="first frame (paused)">
             <input type="button" id="seekPrevious" value="&LeftArrowBar;" title="previous frame (paused)">

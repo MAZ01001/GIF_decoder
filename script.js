@@ -921,7 +921,7 @@ const confirmDialog=Object.seal(new class ConfirmDialog{
 const urlParam=(()=>{
     "use strict";
     const args=new URLSearchParams(window.location.search);
-    let tmpNum=NaN;
+    let tmpNum=NaN,tmpStr="";
     return Object.freeze({
         /**
          * GIF URL to load - default `null` → use the URL of this public domain GIF from Wikimedia:
@@ -950,7 +950,7 @@ const urlParam=(()=>{
         /** If the {@linkcode html.import.menu} should be opened - default `0` (closed) */
         import:(args.get("import")??"0")!=="0",
         /** If the GIF should be playing and how fast (clamped to `-100` to `100`) - default `0` (paused) */
-        play:Number.isNaN(tmpNum=Number(args.get("play")??"0"))?1:(tmpNum<-100?-100:(tmpNum>100?100:tmpNum)),
+        play:Number.isNaN(tmpNum=Number(tmpStr=args.get("play")??"0"))||tmpStr.length===0?1:(tmpNum<-100?-100:(tmpNum>100?100:tmpNum)),
         /** The frame index (zero-based) to start with (if out of bounds use first frame) - default `0` (first frame) */
         f:Number.isSafeInteger(tmpNum=Number(args.get("f")))&&tmpNum>=0?tmpNum:0,
         /** If the {@linkcode html.userInput.lock} should be toggled on - default `0` (OFF) */
@@ -1022,6 +1022,8 @@ const global=Object.seal({
     }(8),
     /** last frame timestamp of animation loop (not related to GIF) */
     lastAnimationFrameTime:0,
+    /** ID of current animation frame handler */
+    animationFrame:NaN,
     /** current timestamp of GIF */
     time:0,
     /** total time of GIF (ignoring user input flags) */
@@ -1195,21 +1197,6 @@ const formatNumFixed=(num,fixed)=>{
 };
 
 /**
- * ## Get CSS color from {@linkcode gif}
- * priority: [transparent flag > local color table] > global color table > `transparent`
- * @param {GIF} gif - a {@linkcode GIF} obj
- * @param {number} frame - frame index (for transparent flag and local color table)
- * @param {number} index - index into color tables
- * @returns {string} CSS hex color or `transparent`
- */
-const getCSSColor=(gif,frame,index)=>{
-    "use strict";
-    if(gif.frames[frame]==null)return gif.globalColorTable[index]?.reduce((o,v)=>o+v.toString(0x10).toUpperCase().padStart(2,'0'),"#")??"transparent";
-    if(gif.frames[frame].transparentColorIndex===index)return"transparent";
-    return(gif.frames[frame].localColorTable[index]??gif.globalColorTable[index])?.reduce((o,v)=>o+v.toString(0x10).toUpperCase().padStart(2,'0'),"#")??"transparent";
-};
-
-/**
  * ## Computes the greatest-common-divisor of two whole numbers
  * @param {number} a - positive safe integer
  * @param {number} b - positive safe integer
@@ -1238,21 +1225,11 @@ const genHTMLColorGrid=(colorTable,global,backgroundColorIndex,transparentColorI
         const input=document.createElement("input"),
             label=document.createElement("label");
         input.type="color";
-        input.value=color.reduce((o,v)=>o+v.toString(0x10).toUpperCase().padStart(2,'0'),"#");
+        input.value=color.reduce((o,v)=>o+v.toString(0x10).toUpperCase().padStart(2,'0'),'#');
         input.addEventListener("click",copyHexColorToClipboard,{passive:false});
         label.title=`Color index ${i} - click to copy hex code`;
-        if(i===backgroundColorIndex)
-            if(i===transparentColorIndex){
-                label.classList.add("background-flag","transparent-flag");
-                label.title+=" (used as background color and as an indication for transparency)";
-            }else{
-                label.classList.add("background-flag");
-                label.title+=" (used as background color)";
-            }
-        else if(i===transparentColorIndex){
-            label.classList.add("transparent-flag");
-            label.title+=" (color indicates transparency)";
-        }
+        if(i===backgroundColorIndex)label.classList.add("background-flag");
+        if(i===transparentColorIndex)label.classList.add("transparent-flag");
         label.append(`[${i}]`,input);
         return label;
     });
@@ -1815,9 +1792,8 @@ html.import.confirm.addEventListener("click",async()=>{
     html.loading.frameText.textContent="Loading...";
     await new Promise(E=>setTimeout(E,0));
     html.root.dispatchEvent(new CustomEvent("loadstart"));
-    decodeGIF(fileSrc,undefined,async(percentageRead,frameIndex,frame,framePos,gifSize)=>{
+    decodeGIF(fileSrc,undefined,(percentageRead,frameIndex,frame,framePos,gifSize)=>{
         "use strict";
-        // TODO draw correctly to GIF canvas (during loading)
         if(frameIndex===0){//~ only on first call
             html.frame.htmlCanvas.width=(html.view.htmlCanvas.width=gifSize[0]);
             html.frame.htmlCanvas.height=(html.view.htmlCanvas.height=gifSize[1]);
@@ -1826,13 +1802,13 @@ html.import.confirm.addEventListener("click",async()=>{
         html.loading.gifProgress.value=(html.loading.frameProgress.value=percentageRead);
         html.loading.gifText.textContent=(html.loading.frameText.textContent=`Frame ${formatNumFixed(frameIndex+1)} | ${formatNumFixed(percentageRead*0x64,2)}%`);
         html.view.canvas.clearRect(0,0,html.view.htmlCanvas.width,html.view.htmlCanvas.height);
-        html.view.canvas.putImageData(frame,framePos[0],framePos[1]);
+        html.view.canvas.putImageData(frame,...framePos);
         if(html.details.frameView.open){
             html.frame.canvas.clearRect(0,0,html.frame.htmlCanvas.width,html.frame.htmlCanvas.height);
-            html.frame.canvas.putImageData(frame,framePos[0],framePos[1]);
+            html.frame.canvas.putImageData(frame,...framePos);
         }
         //~ wait for one cycle
-        await new Promise(E=>setTimeout(E,0));
+        return new Promise(E=>setTimeout(E,0));
     },(loaded,total)=>{
         "use strict";
         if(total==null)console.log(`%cFetching GIF: %s bytes loaded`,"background-color:#000;color:#0A0;",formatNumFixed(loaded));
@@ -1877,31 +1853,20 @@ html.import.confirm.addEventListener("click",async()=>{
         html.frameTime.frameRange.max=String(gif.frames.length-1);
         updateFrameInfoAndTimers();
         //~ draw first frame
-        // TODO draw correctly after disposal method of last frame (use canvas content from loading/decoding above)
         const f=gif.frames[0];
-        //~ save image data if needed
-        if(f.disposalMethod===DisposalMethod.RestorePrevious){
+        //~ save empty image if needed
+        if(f.disposalMethod===DisposalMethod.RestorePrevious)
             if(f.plainTextData==null){
                 global.undisposedCanvasObj.width=f.width;
                 global.undisposedCanvasObj.height=f.height;
-                global.undisposedCanvas.drawImage(html.view.htmlCanvas,f.left,f.top,f.width,f.height,0,0,f.width,f.height);
-                global.undisposedPos[0]=f.left;
-                global.undisposedPos[1]=f.top;
             }else{
-                const left=Math.min(f.left,f.plainTextData.left),
-                    top=Math.min(f.top,f.plainTextData.top),
-                    width=Math.max(f.left+f.width,f.plainTextData.left+f.plainTextData.width)-left,
-                    height=Math.max(f.top+f.height,f.plainTextData.top+f.plainTextData.height)-top;
-                global.undisposedCanvasObj.width=width;
-                global.undisposedCanvasObj.height=height;
-                global.undisposedCanvas.drawImage(html.view.htmlCanvas,left,top,width,height,0,0,width,height);
-                global.undisposedPos[0]=left;
-                global.undisposedPos[1]=top;
+                global.undisposedCanvasObj.width=Math.max(f.left+f.width,f.plainTextData.left+f.plainTextData.width)-Math.min(f.left,f.plainTextData.left);
+                global.undisposedCanvasObj.height=Math.max(f.top+f.height,f.plainTextData.top+f.plainTextData.height)-Math.min(f.top,f.plainTextData.top);
             }
-        }
         //~ render first frame
         html.frame.canvas.clearRect(0,0,html.frame.htmlCanvas.width,html.frame.htmlCanvas.height);
         html.frame.canvas.putImageData(f.image,f.left,f.top);
+        html.view.canvas.clearRect(0,0,html.view.htmlCanvas.width,html.view.htmlCanvas.height);
         html.view.canvas.drawImage(html.frame.htmlCanvas,f.left,f.top,f.width,f.height,f.left,f.top,f.width,f.height);
         //~ render text extension
         if(f.plainTextData!=null){
@@ -2087,7 +2052,6 @@ html.loop.toggle.addEventListener("click",()=>{
 //~ | |_\ \_| |_| |     | | |  __/ | | | (_| |  __/ |
 //~  \____/\___/\_|     |_|  \___|_| |_|\__,_|\___|_|
 
-// TODO ! test edge-cases
 //~ load URL parameters
 (async()=>{
     "use strict";
@@ -2112,46 +2076,6 @@ html.loop.toggle.addEventListener("click",()=>{
         return;
     }
     //~ load GIF
-    /* TODO create example GIF file with all known features - https://www.w3.org/Graphics/GIF/spec-gif89a.txt - via GIMP and then edit in HEX-editor ~ create empty file with new size then override all bytes (since vscode-hexeditor can't add bytes...yet)
-        - 500*500 px total
-        - 30 frames
-          - irregular frame delays
-          - not full frame changes (frames are smaller than whole GIF)
-        - every disposal method
-          - ! requires some planning in the frame image contents ~ visually
-        - loops 3 times
-        - global color table and at least one local color table (can be a copy of global color table)
-          - use transparency of local color table
-        - user input flag on at least two frames (with and without timeout)
-        - unknown app extension
-          - 0x21FF0C544553545F4150502045585400
-        - text extensions for first 10 frames (graphics control extension > image descriptor > [text extension] > image data)
-          - 0x21010C0A000A00200010000408 <forground_global_color_index_1B> <background_global_color_index_1B> 105445585420666F726672616D655B305D00
-          - 0x21010C0A000A00200010000408 <forground_global_color_index_1B> <background_global_color_index_1B> 105445585420666F726672616D655B315D00
-          - 0x21010C0A000A00200010000408 <forground_global_color_index_1B> <background_global_color_index_1B> 105445585420666F726672616D655B325D00
-          - 0x21010C0A000A00200010000408 <forground_global_color_index_1B> <background_global_color_index_1B> 105445585420666F726672616D655B335D00
-          - 0x21010C0A000A00200010000408 <forground_global_color_index_1B> <background_global_color_index_1B> 105445585420666F726672616D655B345D00
-          - 0x21010C0A000A00200010000408 <forground_global_color_index_1B> <background_global_color_index_1B> 105445585420666F726672616D655B355D00
-          - 0x21010C0A000A00200010000408 <forground_global_color_index_1B> <background_global_color_index_1B> 105445585420666F726672616D655B365D00
-          - 0x21010C0A000A00200010000408 <forground_global_color_index_1B> <background_global_color_index_1B> 105445585420666F726672616D655B375D00
-          - 0x21010C0A000A00200010000408 <forground_global_color_index_1B> <background_global_color_index_1B> 105445585420666F726672616D655B385D00
-          - 0x21010C0A000A00200010000408 <forground_global_color_index_1B> <background_global_color_index_1B> 105445585420666F726672616D655B395D00
-        - comment after image descriptor and before image data for the last frame
-          - 0x21FE4D5445535420636F6D6D656E740D0A616674657220696D6167652064657363726970746F7220616E64206265666F726520696D616765206461746120666F7220746865206C617374206672616D6500
-        - comment after image descriptor and before image data for the 10th frame
-          - 0x21FE4D5445535420636F6D6D656E740D0A616674657220696D6167652064657363726970746F7220616E64206265666F726520696D616765206461746120666F72207468652031307468206672616D6500
-        - comment after image descriptor and before image data for the 100th frame
-          - 0x21FE4E5445535420636F6D6D656E740D0A616674657220696D6167652064657363726970746F7220616E64206265666F726520696D616765206461746120666F7220746865203130307468206672616D6500
-        - unknown extensions (after image data (and app extension) of frames 0-3)
-          - unknown extension 0
-            - 0x2154115445535420657874656E73696F6E20233000
-          - unknown extension 1
-            - 0x2145115445535420657874656E73696F6E20233100
-          - unknown extension 2
-            - 0x2153115445535420657874656E73696F6E20233200
-          - unknown extension 3
-            - 0x2154115445535420657874656E73696F6E20233300
-    */
     if(!await silentImportGIF(urlParam.url??"Wax_fire.gif"))return;
     if(urlParam.f!==0){
         html.frameTime.frameRange.value=String(urlParam.f);
@@ -2190,19 +2114,15 @@ html.loop.toggle.addEventListener("click",()=>{
 })();
 
 //~ animation loop
-window.requestAnimationFrame(async function loop(time){
+global.animationFrame=window.requestAnimationFrame(async function loop(time){
     "use strict";
     if(time===global.lastAnimationFrameTime){
-        window.requestAnimationFrame(loop);
+        global.animationFrame=window.requestAnimationFrame(loop);
         return;
     }
-    const delta=time-global.lastAnimationFrameTime,
-        previousPlayback=global.playback*global.speed;
+    const delta=time-global.lastAnimationFrameTime;
     global.fps.add(delta);
     html.view.fps.textContent=(html.frame.fps.textContent=`FPS ${formatNumFixed(global.fps.avg).padStart(3,' ')}`);
-    // TODO make calculating frame index/time and rendering into functions for the GIFdecodeModule.js and the GIF decode section at the beginning of this file
-    // TODO >> seekGIFplayback(GIF,loopIndex,frameIndex,timestamp,seekTime,skipUserInput?)=>[newLoopIndex,newFrameIndex,newTimestamp,paused]
-    // TODO >> renderGIFplayback(GIF,frameIndexCurrent,frameIndexNew,???)=>??? ~ maybe generator function
     //~ calculate time, frame, and loop amount (with user input)
     let seek=global.playback*global.speed*delta;
     if(seek<0)do{//~ reverse seek
@@ -2290,28 +2210,44 @@ window.requestAnimationFrame(async function loop(time){
     //~ render frame and update time
     if(global.frameIndex!==global.frameIndexLast){
         updateFrameInfoAndTimers();
-        // TODO ? toggle=1 for clear at [0] (ignores last disposal nmethod) ~ seeks from [0] to frameIndex if frameIndex < frameIndexLast ~ also more performant for reverse play
-        // TODO ? toggle=0 for true inverse render ~ when reverse play render from frameIndexLast to frameIndex ~ disposal methods are also in reverse ~ probably faster but visually unexpected
-        // TODO use getCSSColor() to get correct CSS color of current frame
         let f=global.gifDecode.frames[global.frameIndexLast];
         //~ restore saved image data or background color if available
         switch(f.disposalMethod){
+            case DisposalMethod.RestoreBackgroundColor:
+                //~ load frame image in undisposed canvas
+                global.undisposedCanvasObj.width=f.width;
+                global.undisposedCanvasObj.height=f.height;
+                global.undisposedPos[0]=f.left;
+                global.undisposedPos[1]=f.top;
+                global.undisposedCanvas.putImageData(f.image,0,0);
+                const bgColorIndex=global.gifDecode.backgroundColorIndex;
+                if(
+                    bgColorIndex==null
+                    ||(f.localColorTable.length!==0&&f.localColorTable.length<=bgColorIndex)
+                    ||(global.gifDecode.globalColorTable.length!==0&&global.gifDecode.globalColorTable.length<=bgColorIndex)
+                    //~ ↑ error → fallback to transparent
+                    ||bgColorIndex===f.transparentColorIndex
+                    // BUG backgrond color is not transparent where it should be !?
+                    //// ||true
+                ){
+                    //~ set pixels in GIF canvas transparent where they are opaque in undisposed canvas
+                    html.view.canvas.globalCompositeOperation="destination-out";
+                    html.view.canvas.drawImage(global.undisposedCanvasObj,...global.undisposedPos);
+                    html.view.canvas.globalCompositeOperation="source-over";
+                }else{
+                    //~ set opaque pixels in undisposed canvas to background color and add resulting image to GIF canvas
+                    global.undisposedCanvas.globalCompositeOperation="source-in";
+                    global.undisposedCanvas.fillStyle=(f.localColorTable.length!==0?f.localColorTable:global.gifDecode.globalColorTable)[bgColorIndex].reduce((o,v)=>o+v.toString(0x10).padStart(2,'0'),'#');
+                    global.undisposedCanvas.fillRect(0,0,f.width,f.height);
+                    global.undisposedCanvas.globalCompositeOperation="copy";
+                    html.view.canvas.drawImage(global.undisposedCanvasObj,...global.undisposedPos);
+                }
+            break;
             case DisposalMethod.RestorePrevious:
-                // TODO test if this will replace correctly with alpha channel (replace not additive)
+                //~ load stored image from undisposed canvas
                 html.view.canvas.globalCompositeOperation="copy";
                 html.view.canvas.drawImage(global.undisposedCanvasObj,...global.undisposedPos);
                 html.view.canvas.globalCompositeOperation="source-over";
-            break;
-            case DisposalMethod.RestoreBackgroundColor:
-                // FIXME color only pixels that are opaque in the frame ~ can be transparent ie. clear ~ maybe use undisposedCanvas for that
-                if(global.gifDecode.backgroundColorIndex==null){
-                    html.view.canvas.clearRect(f.left,f.top,f.width,f.height);
-                    if(f.plainTextData!=null)html.view.canvas.clearRect(f.plainTextData.left,f.plainTextData.top,f.plainTextData.width,f.plainTextData.height);
-                }else{
-                    html.view.canvas.fillStyle=global.gifDecode.globalColorTable[global.gifDecode.backgroundColorIndex].reduce((o,v)=>o+v.toString(0x10).padStart(2,"0"),"#");
-                    html.view.canvas.fillRect(f.left,f.top,f.width,f.height);
-                    if(f.plainTextData!=null)html.view.canvas.fillRect(f.plainTextData.left,f.plainTextData.top,f.plainTextData.width,f.plainTextData.height);
-                }
             break;
         }
         //~ render from (frameIndexLast +1) to (frameIndex -1)
@@ -2362,29 +2298,49 @@ window.requestAnimationFrame(async function loop(time){
                 }
             break;
             case DisposalMethod.RestoreBackgroundColor:
-                // FIXME color only pixels that are opaque in the frame ~ can be transparent ie. clear ~ maybe use undisposedCanvas for that
-                //~ render background color (or clear)
-                if(global.gifDecode.backgroundColorIndex==null){
-                    html.view.canvas.clearRect(f.left,f.top,f.width,f.height);
-                    if(f.plainTextData!=null)html.view.canvas.clearRect(f.plainTextData.left,f.plainTextData.top,f.plainTextData.width,f.plainTextData.height);
+                //~ load frame image in undisposed canvas
+                global.undisposedCanvasObj.width=f.width;
+                global.undisposedCanvasObj.height=f.height;
+                global.undisposedPos[0]=f.left;
+                global.undisposedPos[1]=f.top;
+                global.undisposedCanvas.putImageData(f.image,0,0);
+                const bgColorIndex=global.gifDecode.backgroundColorIndex;
+                if(
+                    bgColorIndex==null
+                    ||(f.localColorTable.length!==0&&f.localColorTable.length<=bgColorIndex)
+                    ||(global.gifDecode.globalColorTable.length!==0&&global.gifDecode.globalColorTable.length<=bgColorIndex)
+                    //~ ↑ error → fallback to transparent
+                    ||bgColorIndex===f.transparentColorIndex
+                    // BUG backgrond color is not transparent where it should be !?
+                    //// ||true
+                ){
+                    //~ set pixels in GIF canvas transparent where they are opaque in undisposed canvas
+                    html.view.canvas.globalCompositeOperation="destination-out";
+                    html.view.canvas.drawImage(global.undisposedCanvasObj,...global.undisposedPos);
+                    html.view.canvas.globalCompositeOperation="source-over";
                 }else{
-                    html.view.canvas.fillStyle=global.gifDecode.globalColorTable[global.gifDecode.backgroundColorIndex].reduce((o,v)=>o+v.toString(0x10).padStart(2,"0"),"#");
-                    html.view.canvas.fillRect(f.left,f.top,f.width,f.height);
-                    if(f.plainTextData!=null)html.view.canvas.fillRect(f.plainTextData.left,f.plainTextData.top,f.plainTextData.width,f.plainTextData.height);
+                    //~ set opaque pixels in undisposed canvas to background color and add resulting image to GIF canvas
+                    global.undisposedCanvas.globalCompositeOperation="source-in";
+                    global.undisposedCanvas.fillStyle=(f.localColorTable.length!==0?f.localColorTable:global.gifDecode.globalColorTable)[bgColorIndex].reduce((o,v)=>o+v.toString(0x10).padStart(2,'0'),'#');
+                    global.undisposedCanvas.fillRect(0,0,f.width,f.height);
+                    global.undisposedCanvas.globalCompositeOperation="copy";
+                    html.view.canvas.drawImage(global.undisposedCanvasObj,...global.undisposedPos);
                 }
             break;
             case DisposalMethod.RestorePrevious:
                 //~ skip frame
             break;
         }
+        await Promise.resolve();
+        f=global.gifDecode.frames[global.frameIndex];
+        // BUG GIFs seem to expect a full-clear after every complete render (before first frame) !
+        //// if(global.frameIndex===0)html.view.canvas.clearRect(0,0,html.view.htmlCanvas.width,html.view.htmlCanvas.height);
         //~ save image data if needed
-        if((f=global.gifDecode.frames[global.frameIndex]).disposalMethod===DisposalMethod.RestorePrevious){
+        if(f.disposalMethod===DisposalMethod.RestorePrevious){
             if(f.plainTextData==null){
                 global.undisposedCanvasObj.width=f.width;
                 global.undisposedCanvasObj.height=f.height;
-                global.undisposedCanvas.drawImage(html.view.htmlCanvas,f.left,f.top,f.width,f.height,0,0,f.width,f.height);
-                global.undisposedPos[0]=f.left;
-                global.undisposedPos[1]=f.top;
+                global.undisposedCanvas.drawImage(html.view.htmlCanvas,(global.undisposedPos[0]=f.left),(global.undisposedPos[1]=f.top),f.width,f.height,0,0,f.width,f.height);
             }else{
                 const left=Math.min(f.left,f.plainTextData.left),
                     top=Math.min(f.top,f.plainTextData.top),
@@ -2392,9 +2348,7 @@ window.requestAnimationFrame(async function loop(time){
                     height=Math.max(f.top+f.height,f.plainTextData.top+f.plainTextData.height)-top;
                 global.undisposedCanvasObj.width=width;
                 global.undisposedCanvasObj.height=height;
-                global.undisposedCanvas.drawImage(html.view.htmlCanvas,left,top,width,height,0,0,width,height);
-                global.undisposedPos[0]=left;
-                global.undisposedPos[1]=top;
+                global.undisposedCanvas.drawImage(html.view.htmlCanvas,(global.undisposedPos[0]=left),(global.undisposedPos[1]=top),width,height,0,0,width,height);
             }
         }
         //~ draw newest frame
@@ -2435,5 +2389,5 @@ window.requestAnimationFrame(async function loop(time){
     }
     updateTimeInfo();
     global.lastAnimationFrameTime=time;
-    window.requestAnimationFrame(loop);
+    global.animationFrame=window.requestAnimationFrame(loop);
 });

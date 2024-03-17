@@ -97,13 +97,30 @@ See description/type information [further below](#disposalmethod-attributes-enum
 
 Decodes a GIF into its components for rendering on a canvas.
 
-<details><summary><code>async decodeGIF(gifURL, avgAlpha, progressCallback, fetchProgressCallback)</code></summary>
+<details><summary><code>async decodeGIF(gifURL, avgAlpha, fetchProgressCallback, sizeCheck, progressCallback)</code></summary>
 
 function parameters (in order)
 
 1. `gifURL` (`string`) The URL of a GIF file.
 2. `avgAlpha` (optional `boolean`) If this is `true` then, when encountering a transparent pixel, it uses the average value of the pixels RGB channels to calculate the alpha channels value, otherwise alpha channel is either 0 or 1. Default `false`.
-3. `progressCallback` (optional `function`) Optional callback for showing progress of decoding process (when GIF is interlaced calls after each pass (4x on the same frame)).
+3. `fetchProgressCallback` (optional `function`) Optional callback for showing progress of fetching the image data (in bytes).
+
+   ```typescript
+   function(
+       loaded: number,      // amount of bytes loaded
+       total: number | null // total amount of bytes to load (or null if not available)
+   ): any
+   ```
+
+4. `sizeCheck` (optional `function`) Optional check if the loaded file should be processed if this yields `false` then it will reject with `file to large`
+
+   ```typescript
+   function(
+       byteLength: number // size of file in bytes
+   ): Promise<boolean> | boolean // continues decoding with `true`
+   ```
+
+5. `progressCallback` (optional `function`) Optional callback for showing progress of decoding process (when GIF is interlaced calls after each pass (4x on the same frame)).
    If asynchronous, it waits for it to resolve.
 
    ```typescript
@@ -116,22 +133,14 @@ function parameters (in order)
    ): any
    ```
 
-4. `fetchProgressCallback` (optional `function`) Optional callback for showing progress of fetching the image data (in bytes).
-
-   ```typescript
-   function(
-       loaded: number,      // amount of bytes loaded
-       total: number | null // total amount of bytes to load (or null if not available)
-   ): any
-   ```
-
 Returns ([`GIF`](#gif-attributes "scroll down to the `GIF` attributes section")) a promise of the [`GIF`](#gif-attributes "scroll down to the `GIF` attributes section") with each frame decoded separately.
 The promise may reject for one the following reasons:
 
-- `fetch error` when trying to fetch the GIF from {@linkcode gifURL} (probably blocked by [CORS security options](https://developer.mozilla.org/en-US/docs/Web/HTTP/CORS "MDN: Cross-Origin Resource Sharing"))
-- `fetch aborted` when trying to fetch the GIF from {@linkcode gifURL}
+- `fetch error` when trying to fetch the GIF from `gifURL` (probably blocked by [CORS security options](https://developer.mozilla.org/en-US/docs/Web/HTTP/CORS "MDN: Cross-Origin Resource Sharing"))
+- `fetch aborted` when trying to fetch the GIF from `gifURL`
 - `loading error [CODE]` when URL yields a status code that's not between 200 and 299 (inclusive)
-- `not a supported GIF file` when the GIF version is not `GIF89a`
+- `file to large` when `sizeCheck` yields `false`
+- `not a supported GIF file` when it's not a GIF file or the version is not `GIF89a`
 - `error while parsing frame [INDEX] "ERROR"` while decoding GIF - one of the following
   - `GIF frame size is to large`
   - `plain text extension without global color table`
@@ -141,8 +150,9 @@ Throws (`TypeError`) for one of the following (in order)
 
 1. `gifURL` is not a string
 2. `avgAlpha` is given (not `null` or `undefined`) but not a boolean
-3. `progressCallback` is given (not `null` or `undefined`) but not a function
-4. `fetchProgressCallback` is given (not `null` or `undefined`) but not a function.
+3. `fetchProgressCallback` is given (not `null` or `undefined`) but not a function
+4. `sizeCheck` is given (not `null` or `undefined`) but not a function
+5. `progressCallback` is given (not `null` or `undefined`) but not a function
 
 </details>
 

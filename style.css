@@ -393,6 +393,27 @@ div#infoPanels{
     scrollbar-gutter: stable both-edges;
     justify-content: flex-start;
 }
+div#infoPanels>div:first-child{
+    display: grid;
+    gap: .5rem;
+    grid-template-columns: 1fr 1fr;
+    place-items: safe center;
+    align-content: safe center;
+    justify-content: space-around;
+}
+div#infoPanels>div:first-child>*{font: inherit;}
+div#infoPanels>div:first-child>a{
+    color: #0AF;
+    text-decoration: none;
+}
+div#infoPanels>div:first-child>a:visited{color: #05F;}
+div#infoPanels>div:first-child>a:hover,
+div#infoPanels>div:first-child>a:active{
+    color: #0FF;
+    text-shadow: 0px 0px 15px #00F,
+        0px 0px 15px #00F,
+        0px 0px 15px #00F;
+}
 div#infoPanels>fieldset{align-self: stretch;}
 div#gifInfoArea,
 div#frameInfoArea,

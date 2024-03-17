@@ -69,20 +69,22 @@ const DisposalMethod=Object.freeze({
  * ## Decodes a GIF into its components for rendering on a canvas
  * @param {string} gifURL - the URL of a GIF file
  * @param {boolean} [avgAlpha] - if this is `true` then, when encountering a transparent pixel, it uses the average value of the pixels RGB channels to calculate the alpha channels value, otherwise alpha channel is either 0 or 1 - _default `false`_
- * @param {(percentageRead:number,frameIndex:number,frame:ImageData,framePos:[number,number],gifSize:[number,number])=>any} [progressCallback] - Optional callback for showing progress of decoding process (when GIF is interlaced calls after each pass (4x on the same frame)) - if asynchronous, it waits for it to resolve before continuing decoding
  * @param {(loaded:number,total:number|null)=>any} [fetchProgressCallback] - Optional callback for showing progress of fetching the image data (in bytes)
+ * @param {(byteLength:number)=>(Promise<boolean>|boolean)} [sizeCheck] - Optional check if the loaded file should be processed if this yields `false` then it will reject with `file to large`
+ * @param {(percentageRead:number,frameIndex:number,frame:ImageData,framePos:[number,number],gifSize:[number,number])=>any} [progressCallback] - Optional callback for showing progress of decoding process (when GIF is interlaced calls after each pass (4x on the same frame)) - if asynchronous, it waits for it to resolve before continuing decoding
  * @returns {Promise<GIF>} the GIF with each frame decoded separately - may reject for the following reasons
  * - `fetch error` when trying to fetch the GIF from {@linkcode gifURL} (probably blocked by CORS security options)
  * - `fetch aborted` when trying to fetch the GIF from {@linkcode gifURL}
  * - `loading error [CODE]` when URL yields a status code that's NOT between 200 and 299 (inclusive)
- * - `not a supported GIF file` when GIF version is NOT `GIF89a`
+ * - `file to large` when {@linkcode sizeCheck} yields `false`
+ * - `not a supported GIF file` when it's not a GIF file or the version is NOT `GIF89a`
  * - `error while parsing frame [INDEX] "ERROR"` while decoding GIF - one of the following
  * - - `GIF frame size is to large`
  * - - `plain text extension without global color table`
  * - - `undefined block found`
  * @throws {TypeError} if {@linkcode gifURL} is not a string, {@linkcode progressCallback} is given but not a function, or {@linkcode avgAlpha} is given but not a boolean
  */
-const decodeGIF=async(gifURL,avgAlpha,progressCallback,fetchProgressCallback)=>{
+const decodeGIF=async(gifURL,avgAlpha,fetchProgressCallback,sizeCheck,progressCallback)=>{
     "use strict";
     if(typeof gifURL!=="string")throw new TypeError("[decodeGIF] gifURL is not a string");
     avgAlpha??=false;
@@ -401,6 +403,7 @@ const decodeGIF=async(gifURL,avgAlpha,progressCallback,fetchProgressCallback)=>{
         xhr.onload=async()=>{
             "use strict";
             if(xhr.status<0xC8||xhr.status>=0x12C){reject(`loading error [${xhr.status}]`);return;}
+            if(!(await(sizeCheck?.(xhr.response?.byteLength??NaN)??true))){reject("file to large");return;}
             //? https://www.w3.org/Graphics/GIF/spec-gif89a.txt
             //? https://www.matthewflickinger.com/lab/whatsinagif/bits_and_bytes.asp
             //~ load stream and start decoding
@@ -592,6 +595,19 @@ const html=Object.freeze({
         frameRange:document.getElementById("frameRange"),
         /** @type {HTMLSpanElement} Displays current (zero-based) frame index (next to {@linkcode html.frameTime.frameRange}) *///@ts-ignore element does exist in DOM
         frame:document.getElementById("frame")
+    }),
+    /** Override options for rendering (left of {@linkcode html.controls}) */
+    override:Object.freeze({
+        /** @type {HTMLInputElement} Button to `data-toggle` the visibility of the override menu (CSS) *///@ts-ignore element does exist in DOM
+        menu:document.getElementById("overrideMenu"),
+        /** @type {HTMLInputElement} Checkbox to toggle clearing after the last frame / before the first frame → ignore {@linkcode Frame.disposalMethod} and limit rendering start to frame 0 *///@ts-ignore element does exist in DOM
+        clear:document.getElementById("overrideClear"),
+        /** @type {HTMLInputElement} Checkbox to toggle background color transparent when restoring to background color ({@linkcode DisposalMethod.RestoreBackgroundColor}) → ignores {@linkcode Frame.transparentColorIndex} (not for text extension) *///@ts-ignore element does exist in DOM
+        background:document.getElementById("overrideBackground"),
+        /** @type {HTMLInputElement} Checkbox to toggle rendering the text extensions (do not render when checked) → ignores {@linkcode Frame.plainTextData} *///@ts-ignore element does exist in DOM
+        text:document.getElementById("overrideText"),
+        /** @type {HTMLInputElement} Checkbox to toggle reverse rendering order (left instead of right) → from {@linkcode global.frameIndexLast} decrement (not increment) frame index until {@linkcode global.frameIndex} is reached *///@ts-ignore element does exist in DOM
+        render:document.getElementById("overrideRender")
     }),
     /** GIF playback controls (under {@linkcode html.frameTime}) */
     controls:Object.freeze({
@@ -1163,6 +1179,7 @@ const blockInput=state=>{
     html.view.imgSmoothing.disabled=state;
     html.frameTime.frameRange.ariaDisabled=state?"true":null;
     html.frameTime.frameRange.tabIndex=state?-1:0;
+    html.override.menu.disabled=state;
     html.controls.seekEnd.disabled=state;
     html.controls.seekPrevious.disabled=state;
     html.controls.reverse.disabled=state;
@@ -1453,6 +1470,9 @@ html.frame.text.background.addEventListener("click",copyHexColorToClipboard,{pas
     ev.preventDefault();
     resizeable.style.height="";
 },{passive:false}));
+
+// TODO remove when implemented ~ add URL parameters (clear and background are ON by default)
+html.override.clear.disabled=(html.override.background.disabled=(html.override.text.disabled=(html.override.render.disabled=true)));
 
 //~  _   _ _                                 _             _
 //~ | | | (_)                               | |           | |
@@ -1792,28 +1812,34 @@ html.import.confirm.addEventListener("click",async()=>{
     html.loading.frameText.textContent="Loading...";
     await new Promise(E=>setTimeout(E,0));
     html.root.dispatchEvent(new CustomEvent("loadstart"));
-    decodeGIF(fileSrc,undefined,(percentageRead,frameIndex,frame,framePos,gifSize)=>{
-        "use strict";
-        if(frameIndex===0){//~ only on first call
-            html.frame.htmlCanvas.width=(html.view.htmlCanvas.width=gifSize[0]);
-            html.frame.htmlCanvas.height=(html.view.htmlCanvas.height=gifSize[1]);
-            //~ canvases are cleared automatically when their size is set
+    decodeGIF(
+        fileSrc,
+        undefined,
+        (loaded,total)=>{
+            "use strict";
+            if(total==null)console.log(`%cFetching GIF: %s bytes loaded`,"background-color:#000;color:#0A0;",formatNumFixed(loaded));
+            else console.log(`%cFetching GIF: %s of %s bytes loaded (%s %%)`,"background-color:#000;color:#0A0;",formatNumFixed(loaded),formatNumFixed(total),formatNumFixed(loaded*0x64/total,2));
+        },
+        byteSize=>byteSize<0xA00000?true:new Promise(resolve=>confirmDialog.Setup("Loaded file is 10MiB or large, continue processing?",aborted=>resolve(!aborted))),
+        (percentageRead,frameIndex,frame,framePos,gifSize)=>{
+            "use strict";
+            if(frameIndex===0){//~ only on first call
+                html.frame.htmlCanvas.width=(html.view.htmlCanvas.width=gifSize[0]);
+                html.frame.htmlCanvas.height=(html.view.htmlCanvas.height=gifSize[1]);
+                //~ canvases are cleared automatically when their size is set
+            }
+            html.loading.gifProgress.value=(html.loading.frameProgress.value=percentageRead);
+            html.loading.gifText.textContent=(html.loading.frameText.textContent=`Frame ${formatNumFixed(frameIndex+1)} | ${formatNumFixed(percentageRead*0x64,2)}%`);
+            html.view.canvas.clearRect(0,0,html.view.htmlCanvas.width,html.view.htmlCanvas.height);
+            html.view.canvas.putImageData(frame,...framePos);
+            if(html.details.frameView.open){
+                html.frame.canvas.clearRect(0,0,html.frame.htmlCanvas.width,html.frame.htmlCanvas.height);
+                html.frame.canvas.putImageData(frame,...framePos);
+            }
+            //~ wait for one cycle
+            return new Promise(E=>setTimeout(E,0));
         }
-        html.loading.gifProgress.value=(html.loading.frameProgress.value=percentageRead);
-        html.loading.gifText.textContent=(html.loading.frameText.textContent=`Frame ${formatNumFixed(frameIndex+1)} | ${formatNumFixed(percentageRead*0x64,2)}%`);
-        html.view.canvas.clearRect(0,0,html.view.htmlCanvas.width,html.view.htmlCanvas.height);
-        html.view.canvas.putImageData(frame,...framePos);
-        if(html.details.frameView.open){
-            html.frame.canvas.clearRect(0,0,html.frame.htmlCanvas.width,html.frame.htmlCanvas.height);
-            html.frame.canvas.putImageData(frame,...framePos);
-        }
-        //~ wait for one cycle
-        return new Promise(E=>setTimeout(E,0));
-    },(loaded,total)=>{
-        "use strict";
-        if(total==null)console.log(`%cFetching GIF: %s bytes loaded`,"background-color:#000;color:#0A0;",formatNumFixed(loaded));
-        else console.log(`%cFetching GIF: %s of %s bytes loaded (%s %%)`,"background-color:#000;color:#0A0;",formatNumFixed(loaded),formatNumFixed(total),formatNumFixed(loaded*0x64/total,2));
-    }).then(gif=>{
+    ).then(gif=>{
         "use strict";
         //~ reset variables and UI
         html.loop.toggle.disabled=(global.loops=getGIFLoopAmount(global.gifDecode=gif))===Infinity;
@@ -1936,6 +1962,11 @@ html.frameTime.frameRange.addEventListener("input",()=>{
     html.frameTime.timeRange.value=String(global.time=global.frameStarts[global.frameIndex=Number(html.frameTime.frameRange.value)]);
     html.frameTime.frame.textContent=formatNumFixed(global.frameIndex);
     html.frameTime.time.textContent=formatNumFixed(global.time);
+},{passive:true});
+
+html.override.menu.addEventListener("click",()=>{
+    "use strict";
+    html.override.menu.dataset.toggle=html.override.menu.dataset.toggle==="1"?"0":"1";
 },{passive:true});
 
 html.controls.seekStart.addEventListener("click",()=>{

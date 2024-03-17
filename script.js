@@ -82,15 +82,16 @@ const DisposalMethod=Object.freeze({
  * - - `GIF frame size is to large`
  * - - `plain text extension without global color table`
  * - - `undefined block found`
- * @throws {TypeError} if {@linkcode gifURL} is not a string, {@linkcode progressCallback} is given but not a function, or {@linkcode avgAlpha} is given but not a boolean
+ * @throws {TypeError} if {@linkcode gifURL} is not a string, {@linkcode fetchProgressCallback}, {@linkcode sizeCheck}, or {@linkcode progressCallback} is given but not a function, or {@linkcode avgAlpha} is given but not a boolean
  */
 const decodeGIF=async(gifURL,avgAlpha,fetchProgressCallback,sizeCheck,progressCallback)=>{
     "use strict";
     if(typeof gifURL!=="string")throw new TypeError("[decodeGIF] gifURL is not a string");
     avgAlpha??=false;
     if(typeof avgAlpha!=="boolean")throw TypeError("[decodeGIF] avgAlpha is not a boolean");
-    if(progressCallback!=null&&typeof progressCallback!=="function")throw new TypeError("[decodeGIF] progressCallback is not a function");
     if(fetchProgressCallback!=null&&typeof fetchProgressCallback!=="function")throw new TypeError("[decodeGIF] fetchProgressCallback is not a function");
+    if(sizeCheck!=null&&typeof sizeCheck!=="function")throw new TypeError("[decodeGIF] sizeCheck is not a function");
+    if(progressCallback!=null&&typeof progressCallback!=="function")throw new TypeError("[decodeGIF] progressCallback is not a function");
     /**
      * @typedef {Object} ByteStream
      * @property {number} pos current position in `data`

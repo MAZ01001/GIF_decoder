@@ -2076,7 +2076,7 @@ html.loop.toggle.addEventListener("click",()=>{
         return;
     }
     //~ load GIF
-    if(!await silentImportGIF(urlParam.url??"Wax_fire.gif"))return;
+    if(!await silentImportGIF(urlParam.url??"https://upload.wikimedia.org/wikipedia/commons/a/a2/Wax_fire.gif"))return;
     if(urlParam.f!==0){
         html.frameTime.frameRange.value=String(urlParam.f);
         html.frameTime.frameRange.dispatchEvent(new InputEvent("input"));

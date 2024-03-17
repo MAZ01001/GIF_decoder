@@ -59,20 +59,22 @@ export const DisposalMethod=Object.freeze({
  * ## Decodes a GIF into its components for rendering on a canvas
  * @param {string} gifURL - the URL of a GIF file
  * @param {boolean} [avgAlpha] - if this is `true` then, when encountering a transparent pixel, it uses the average value of the pixels RGB channels to calculate the alpha channels value, otherwise alpha channel is either 0 or 1 - _default `false`_
- * @param {(percentageRead:number,frameIndex:number,frame:ImageData,framePos:[number,number],gifSize:[number,number])=>any} [progressCallback] - Optional callback for showing progress of decoding process (when GIF is interlaced calls after each pass (4x on the same frame)) - if asynchronous, it waits for it to resolve before continuing decoding
  * @param {(loaded:number,total:number|null)=>any} [fetchProgressCallback] - Optional callback for showing progress of fetching the image data (in bytes)
+ * @param {(byteLength:number)=>(Promise<boolean>|boolean)} [sizeCheck] - Optional check if the loaded file should be processed if this yields `false` then it will reject with `file to large`
+ * @param {(percentageRead:number,frameIndex:number,frame:ImageData,framePos:[number,number],gifSize:[number,number])=>any} [progressCallback] - Optional callback for showing progress of decoding process (when GIF is interlaced calls after each pass (4x on the same frame)) - if asynchronous, it waits for it to resolve before continuing decoding
  * @returns {Promise<GIF>} the GIF with each frame decoded separately - may reject for the following reasons
  * - `fetch error` when trying to fetch the GIF from {@linkcode gifURL} (probably blocked by CORS security options)
  * - `fetch aborted` when trying to fetch the GIF from {@linkcode gifURL}
  * - `loading error [CODE]` when URL yields a status code that's NOT between 200 and 299 (inclusive)
- * - `not a supported GIF file` when GIF version is NOT `GIF89a`
+ * - `file to large` when {@linkcode sizeCheck} yields `false`
+ * - `not a supported GIF file` when it's not a GIF file or the version is NOT `GIF89a`
  * - `error while parsing frame [INDEX] "ERROR"` while decoding GIF - one of the following
  * - - `GIF frame size is to large`
  * - - `plain text extension without global color table`
  * - - `undefined block found`
  * @throws {TypeError} if {@linkcode gifURL} is not a string, {@linkcode progressCallback} is given but not a function, or {@linkcode avgAlpha} is given but not a boolean
  */
-export const decodeGIF=async(gifURL,avgAlpha,progressCallback,fetchProgressCallback)=>{
+export const decodeGIF=async(gifURL,avgAlpha,fetchProgressCallback,sizeCheck,progressCallback)=>{
     "use strict";
     if(typeof gifURL!=="string")throw new TypeError("[decodeGIF] gifURL is not a string");
     avgAlpha??=false;
@@ -391,6 +393,7 @@ export const decodeGIF=async(gifURL,avgAlpha,progressCallback,fetchProgressCallb
         xhr.onload=async()=>{
             "use strict";
             if(xhr.status<0xC8||xhr.status>=0x12C){reject(`loading error [${xhr.status}]`);return;}
+            if(!(await(sizeCheck?.(xhr.response?.byteLength??NaN)??true))){reject("file to large");return;}
             //? https://www.w3.org/Graphics/GIF/spec-gif89a.txt
             //? https://www.matthewflickinger.com/lab/whatsinagif/bits_and_bytes.asp
             //~ load stream and start decoding

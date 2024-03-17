@@ -306,6 +306,63 @@ label[for=timeRange]{
 label[for=frameRange]{grid-area: 4/1/5/4;}
 label[for=frameRange]:has(input#frameRange[aria-disabled=true]){pointer-events: none;}
 input#frameRange{accent-color: #0A0;}
+div#overrideOptions{
+    grid-area: 5/1/6/2;
+    position: relative;
+}
+div#overrideOptions:has(input[type=checkbox]:checked)>input{border-color: #0A0;}
+div#overrideOptions>input{
+    font-size: medium;
+    padding: .2rem .3rem;
+}
+div#overrideOptions>div{
+    display: flex;
+    flex-direction: column;
+    gap: .2rem;
+    justify-content: safe center;
+    justify-items: safe center;
+    align-items: stretch;
+    text-align: left;
+    position: absolute;
+    z-index: 1;
+    top: 2.5rem;
+    background-color: #222;
+    border: 2px outset #444;
+    border-radius: .5rem;
+    padding: .5rem .75rem;
+    box-sizing: border-box;
+    visibility: hidden;
+}
+div#overrideOptions>div::after{
+    content: "";
+    display: block;
+    width: 1rem;
+    height: 1rem;
+    position: absolute;
+    top: 0;
+    left: 1.5rem;
+    translate: 0 -50%;
+    rotate: 45deg;
+    background-color: inherit;
+    border: inherit;
+    border-bottom-color: transparent;
+    border-right-color: transparent;
+}
+div#overrideOptions>input[data-toggle="1"]+div{visibility: visible;}
+div#overrideOptions>div>p{
+    align-self: safe center;
+    margin-block: .5rem;
+    font-size: larger;
+}
+div#overrideOptions>div>label:has(input:disabled){color: #0A0;}
+div#overrideOptions>div>label:not(:last-of-type)::after{
+    content: "";
+    position: absolute;
+    display: block;
+    width: 95%;
+    height: .1rem;
+    border-bottom: 2px solid #333;
+}
 div#playerControls{
     grid-area: 5/2/6/3;
     display: flex;
@@ -354,7 +411,7 @@ fieldset#userInputArea{
 }
 fieldset#userInputArea:not(.waiting):not(.infinity)>label,
 fieldset#userInputArea:not(.waiting):not(.infinity)>input#userInput,
-fieldset#loopArea:has(input#loopForce[data-toggle=true])>span{opacity: .25;}
+fieldset#loopArea:has(input#loopForce[data-toggle="1"])>span{opacity: .25;}
 fieldset#userInputArea.waiting{border: 2px groove #44F;}
 fieldset#userInputArea.waiting progress#userInputTimeout{accent-color: #44F;}
 fieldset#userInputArea.infinity>label{color: #F44;}

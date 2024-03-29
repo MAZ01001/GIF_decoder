@@ -3,7 +3,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <meta name="description" content="[MAZ01001.github.io] GIF decoding and rendering with HTML5 canvas">
+    <meta name="description" content="[MAZ01001.github.io] GIF decoding and rendering with native JavaScript and HTML5 canvas">
     <meta name="author" content="MAZ01001">
     <link rel="apple-touch-icon" sizes="180x180" href="../img/apple-touch-icon.png">
     <link rel="icon" type="image/x-icon" href="../img/MAZ_logo.svg">
@@ -108,7 +108,7 @@
                 <label for="overrideClear" title="Allways clears the canvas between the last and the first frame - ignoring the disposal method of the last frame"><input type="checkbox" id="overrideClear"> Clear canvas on frame 0 <small>(slightly improves the performance impact of reverse playback)</small></label>
                 <label for="overrideBackground" title="Allways uses transparent when restoring to backgrond color (sets drawn pixels transparent) - ignoring the background color and the transparency color of the current frame"><input type="checkbox" id="overrideBackground"> Restoring to background color is allways transparent</label>
                 <label for="overrideText" title="Ignores the text extension of the current frame"><input type="checkbox" id="overrideText"> Don't render text extension</label>
-                <label for="overrideRender" title="Renders frames in reverse order (to the left on the timeline instead of to the right) - may look very weird"><input type="checkbox" id="overrideRender"> Inverse render order <small>(just for fun - reverse performance impact for forward/reverse playback)</small></label>
+                <label for="overrideRender" title="Renders frames in reverse order (to the left on the timeline instead of to the right) - may look very weird"><input type="checkbox" id="overrideRender"> Inverse render order <small>(just for fun - swaps performance impact for forward/reverse playback)</small></label>
             </div>
         </div>
         <div id="playerControls" class="paused">

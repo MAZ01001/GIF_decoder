@@ -1794,7 +1794,7 @@ html.import.file.addEventListener("change",async()=>{
 html.import.confirm.addEventListener("click",async()=>{
     "use strict";
     const fileSrc=html.import.preview.src,
-        fileName=(html.import.file.files?.length??0)>0?html.import.file.files?.[0]?.name:html.import.url.value.match(/^[^#?]+?\/?(.+?\.gif)(?:[#?]|$)/i)?.[0];
+        fileName=(html.import.file.files?.length??0)>0?html.import.file.files?.[0]?.name:html.import.url.value.match(/^[^#?]+?\/?(.+?\.gif)(?:[#?]|$)/i)?.[1];
     html.import.menu.close();
     //~ pause, auto size to window, and reset pan & zoom
     if(global.playback!==0)html.controls.pause.click();

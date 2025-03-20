@@ -694,6 +694,8 @@ img#importPreview{
 p#importWarn{
     margin: .5rem 0;
     padding: .2rem .5rem;
+    min-width: min-content;
+    min-height: min-content;
     max-width: 25rem;
     max-height: 7rem;
     overflow: auto;

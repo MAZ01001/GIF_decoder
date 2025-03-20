@@ -706,7 +706,7 @@ p#importWarn{
     text-align: center;
     font-size: 1.5rem;
 }
-p#importWarn:empty{margin: 0;}
+p#importWarn:empty{display: none;}
 div#importActions{
     display: flex;
     width: 100%;

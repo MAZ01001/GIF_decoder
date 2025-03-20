@@ -1822,6 +1822,7 @@ html.import.confirm.addEventListener("click",async()=>{
     const fileSrc=html.import.preview.src,
         fileName=(html.import.file.files?.length??0)>0?html.import.file.files?.[0]?.name:html.import.url.value.match(/^[^#?]*?\/?([^/]+\.gif)(?:[#?]|$)/i)?.[1];
     html.import.menu.close();
+    html.import.warn.textContent="";
     //~ pause, auto size to window, and reset pan & zoom
     if(global.playback!==0)html.controls.pause.click();
     if(html.view.fitWindow.dataset.toggle==="1")html.view.fitWindow.click();

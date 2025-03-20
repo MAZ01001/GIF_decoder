@@ -1,5 +1,5 @@
 //@ts-check
-"use strict";
+"use strict";//~ counts for the whole file
 /**
  * @typedef {Object} GIF
  * @property {number} width the width of the image in pixels (logical screen size)
@@ -58,30 +58,34 @@ export const DisposalMethod=Object.freeze({
 /**
  * ## Decodes a GIF into its components for rendering on a canvas
  * @param {string} gifURL - the URL of a GIF file
- * @param {boolean} [avgAlpha] - if this is `true` then, when encountering a transparent pixel, it uses the average value of the pixels RGB channels to calculate the alpha channels value, otherwise alpha channel is either 0 or 1 - _default `false`_
- * @param {(loaded:number,total:number|null)=>any} [fetchProgressCallback] - Optional callback for showing progress of fetching the image data (in bytes)
+ * @param {AbortSignal} abortSignal - aboard fetching/parsing with this (via {@linkcode AbortController})
  * @param {(byteLength:number)=>(Promise<boolean>|boolean)} [sizeCheck] - Optional check if the loaded file should be processed if this yields `false` then it will reject with `file to large`
  * @param {(percentageRead:number,frameIndex:number,frame:ImageData,framePos:[number,number],gifSize:[number,number])=>any} [progressCallback] - Optional callback for showing progress of decoding process (when GIF is interlaced calls after each pass (4x on the same frame)) - if asynchronous, it waits for it to resolve before continuing decoding
- * @returns {Promise<GIF>} the GIF with each frame decoded separately - may reject for the following reasons
- * - `fetch error` when trying to fetch the GIF from {@linkcode gifURL} (probably blocked by CORS security options)
- * - `fetch aborted` when trying to fetch the GIF from {@linkcode gifURL}
- * - `loading error [CODE]` when URL yields a status code that's NOT between 200 and 299 (inclusive)
+ * @returns {Promise<GIF>} the GIF with each frame decoded separately - may reject (throw) for the following reasons
+ * - {@linkcode AbortSignal.reason} of {@linkcode abortSignal} when it triggers
+ * - fetch errors when trying to fetch the GIF from {@linkcode gifURL}:
+ * - - `fetch error: network error`
+ * - - `fetch error (connecting)` any unknown error during {@linkcode fetch}
+ * - - `fetch error: recieved STATUS_CODE` when URL yields a status code that's NOT between 200 and 299 (inclusive)
+ * - - `fetch error: could not read resource`
+ * - - `fetch error: resource to large` (not from {@linkcode sizeCheck})
+ * - - `fetch error (reading)` any unknown error during {@linkcode Response.arrayBuffer}
  * - `file to large` when {@linkcode sizeCheck} yields `false`
  * - `not a supported GIF file` when it's not a GIF file or the version is NOT `GIF89a`
  * - `error while parsing frame [INDEX] "ERROR"` while decoding GIF - one of the following
  * - - `GIF frame size is to large`
  * - - `plain text extension without global color table`
  * - - `undefined block found`
- * @throws {TypeError} if {@linkcode gifURL} is not a string, {@linkcode fetchProgressCallback}, {@linkcode sizeCheck}, or {@linkcode progressCallback} is given but not a function, or {@linkcode avgAlpha} is given but not a boolean
+ * - - `reading out of range` (unexpected end of file during decoding)
+ * - - `unknown error`
+ * @throws {TypeError} if {@linkcode gifURL} is not a string; {@linkcode abortSignal} is not an abort signal; or {@linkcode sizeCheck} or {@linkcode progressCallback} are given but aren't functions
  */
-export const decodeGIF=async(gifURL,avgAlpha,fetchProgressCallback,sizeCheck,progressCallback)=>{
-    "use strict";
+export const decodeGIF=async(gifURL,abortSignal,sizeCheck,progressCallback)=>{
     if(typeof gifURL!=="string")throw new TypeError("[decodeGIF] gifURL is not a string");
-    avgAlpha??=false;
-    if(typeof avgAlpha!=="boolean")throw TypeError("[decodeGIF] avgAlpha is not a boolean");
-    if(fetchProgressCallback!=null&&typeof fetchProgressCallback!=="function")throw new TypeError("[decodeGIF] fetchProgressCallback is not a function");
+    if(!(abortSignal instanceof AbortSignal))throw new TypeError("[decodeGIF] abortSignal is not an abort signal");
     if(sizeCheck!=null&&typeof sizeCheck!=="function")throw new TypeError("[decodeGIF] sizeCheck is not a function");
     if(progressCallback!=null&&typeof progressCallback!=="function")throw new TypeError("[decodeGIF] progressCallback is not a function");
+    if(abortSignal.aborted)throw abortSignal.reason;
     /**
      * @typedef {Object} ByteStream
      * @property {number} pos current position in `data`
@@ -92,50 +96,8 @@ export const decodeGIF=async(gifURL,avgAlpha,fetchProgressCallback,sizeCheck,pro
      * @property {()=>string} readSubBlocks reads a set of blocks as a string
      * @property {()=>Uint8Array} readSubBlocksBin reads a set of blocks as binary
      * @property {()=>void} skipSubBlocks skips the next set of blocks in the stream
+     * @throws {RangeError} if any method tries to read out of bounds
      */
-    /**@type {(bytes:Iterable<number>)=>ByteStream}*/
-    const newByteStream=(bytes)=>Object.preventExtensions({
-        pos:0,
-        data:new Uint8ClampedArray(bytes),
-        nextByte(){
-            "use strict";
-            return this.data[this.pos++];
-        },
-        nextTwoBytes(){
-            "use strict";
-            this.pos+=2;
-            return this.data[this.pos-2]+(this.data[this.pos-1]<<8);
-        },
-        getString(count){
-            "use strict";
-            let s="";
-            for(;--count>=0;s+=String.fromCharCode(this.data[this.pos++]));
-            return s;
-        },
-        readSubBlocks(){
-            "use strict";
-            let blockString="",size=0;
-            do{
-                size=this.data[this.pos++];
-                for(let count=size;--count>=0;blockString+=String.fromCharCode(this.data[this.pos++]));
-            }while(size!==0);
-            return blockString;
-        },
-        readSubBlocksBin(){
-            "use strict";
-            let size=0,len=0;
-            for(let offset=0;(size=this.data[this.pos+offset])!==0;offset+=size+1)len+=size;
-            const blockData=new Uint8Array(len);
-            for(let i=0;(size=this.data[this.pos++])!==0;)
-                for(let count=size;--count>=0;blockData[i++]=this.data[this.pos++]);
-            return blockData;
-        },
-        skipSubBlocks(){
-            "use strict";
-            for(;this.data[this.pos]!==0;this.pos+=this.data[this.pos]+1);
-            this.pos++;
-        }
-    });
     /**@type {readonly[0,4,2,1]}*/
     const InterlaceOffsets=Object.freeze([0,4,2,1]);
     /**@type {readonly[8,8,4,2]}*/
@@ -151,16 +113,15 @@ export const decodeGIF=async(gifURL,avgAlpha,fetchProgressCallback,sizeCheck,pro
         /**trailer > end of file / GIF data*/EndOfFile:0x3B,
     });
     /**
-     * ## Get a color table of length `count`
+     * ### Get a color table of length {@linkcode count}
      * @param {ByteStream} byteStream - GIF data stream
-     * @param {number} count - number of colours to read from `byteStream`
+     * @param {number} count - number of colours to read from {@linkcode byteStream}
      * @returns {[number,number,number][]} an array of RGB color values
      */
     const parseColorTable=(byteStream,count)=>{
-        "use strict";
         /**@type {[number,number,number][]}*/
         const colors=[];
-        for(let i=0;i<count;i++){
+        for(let i=0;i<count;++i){
             colors.push([
                 byteStream.data[byteStream.pos],
                 byteStream.data[byteStream.pos+1],
@@ -171,19 +132,21 @@ export const decodeGIF=async(gifURL,avgAlpha,fetchProgressCallback,sizeCheck,pro
         return colors;
     }
     /**
-     * ## Parsing one block from GIF data stream
+     * ### Parsing one block from GIF data stream
      * @param {ByteStream} byteStream - GIF data stream
      * @param {GIF} gif - GIF object to write to
-     * @param {(increment?:boolean)=>number} getFrameIndex - function to get current frame index in `GIF.frames` (optionally increment before next cycle)
+     * @param {(increment?:boolean)=>number} getFrameIndex - function to get current frame index in {@linkcode GIF.frames} (optionally increment before next cycle)
      * @param {(replace?:string)=>string} getLastBlock - function to get last block read (optionally replace for next call)
      * @returns {Promise<boolean>} true if EOF was reached
      * @throws {EvalError} for the following reasons
      * - GIF frame size is to large
      * - plain text extension without global color table
      * - undefined block found
+     * - unknown error
+     * @throws {RangeError} if {@linkcode byteStream} throws for out of bounds reading
+     * @throws {typeof abortSignal} if {@linkcode abortSignal} triggered
      */
     const parseBlock=async(byteStream,gif,getFrameIndex,getLastBlock)=>{
-        "use strict";
         switch(byteStream.nextByte()){
             case GIFDataHeaders.EndOfFile:return true;
             case GIFDataHeaders.Image:
@@ -213,17 +176,15 @@ export const decodeGIF=async(gifURL,avgAlpha,fetchProgressCallback,sizeCheck,pro
                 if(localColorTableFlag)frame.localColorTable=parseColorTable(byteStream,localColorCount);
                 //~ decode frame image data (GIF-LZW) - image data
                 /**
-                 * ## Get color from color tables (transparent if index is equal to the transparency index)
+                 * #### Get color from color tables (transparent if index is equal to the transparency index)
                  * @param {number} index - index into global/local color table
                  * @returns {[number,number,number,number]} RGBA color value
                  */
                 const getColor=index=>{
-                    "use strict";
                     const[R,G,B]=(localColorTableFlag?frame.localColorTable:gif.globalColorTable)[index];
-                    return[R,G,B,index===frame.transparentColorIndex?(avgAlpha?~~((R+G+B)/3):0):0xFF];
+                    return[R,G,B,index===frame.transparentColorIndex?0:255];
                 }
                 const image=(()=>{
-                    "use strict";
                     try{return new ImageData(frame.width,frame.height,{colorSpace:"srgb"});}
                     catch(error){
                         if(error instanceof DOMException&&error.name==="IndexSizeError")return null;
@@ -235,19 +196,18 @@ export const decodeGIF=async(gifURL,avgAlpha,fetchProgressCallback,sizeCheck,pro
                 const imageData=byteStream.readSubBlocksBin();
                 const clearCode=1<<minCodeSize;
                 /**
-                 * ## Read {@linkcode len} bits from {@linkcode imageData} at {@linkcode pos}
+                 * #### Read {@linkcode len} bits from {@linkcode imageData} at {@linkcode pos}
                  * @param {number} pos - bit position in {@linkcode imageData}
                  * @param {number} len - bit length to read [1 to 12 bits]
                  * @returns {number} - {@linkcode len} bits at {@linkcode pos}
                  */
                 const readBits=(pos,len)=>{
-                    "use strict";
                     const bytePos=pos>>>3,
                         bitPos=pos&7;
-                    return((imageData[bytePos]+(imageData[bytePos+1]<<8)+(imageData[bytePos+2]<<0x10))&(((1<<len)-1)<<bitPos))>>>bitPos;
+                    return((imageData[bytePos]+(imageData[bytePos+1]<<8)+(imageData[bytePos+2]<<16))&(((1<<len)-1)<<bitPos))>>>bitPos;
                 };
                 if(interlacedFlag){
-                    for(let code=0,size=minCodeSize+1,pos=0,dic=[[0]],pass=0;pass<4;pass++){
+                    for(let code=0,size=minCodeSize+1,pos=0,dic=[[0]],pass=0;pass<4;++pass){
                         if(InterlaceOffsets[pass]<frame.height)
                             for(let pixelPos=0,lineIndex=0;true;){
                                 const last=code;
@@ -256,22 +216,23 @@ export const decodeGIF=async(gifURL,avgAlpha,fetchProgressCallback,sizeCheck,pro
                                 if(code===clearCode){
                                     size=minCodeSize+1;
                                     dic.length=clearCode+2;
-                                    for(let i=0;i<dic.length;i++)dic[i]=i<clearCode?[i]:[];
+                                    for(let i=0;i<dic.length;++i)dic[i]=i<clearCode?[i]:[];
                                 }else{
                                     if(code>=dic.length)dic.push(dic[last].concat(dic[last][0]));
                                     else if(last!==clearCode)dic.push(dic[last].concat(dic[code][0]));
-                                    for(let i=0;i<dic[code].length;i++){
+                                    for(let i=0;i<dic[code].length;++i){
                                         image.data.set(getColor(dic[code][i]),InterlaceOffsets[pass]*frame.width+InterlaceSteps[pass]*lineIndex+(pixelPos%(frame.width*4)));
                                         pixelPos+=4;
                                     }
-                                    if(dic.length===(1<<size)&&size<0xC)size++;
+                                    if(dic.length===(1<<size)&&size<12)++size;
                                 }
                                 if(pixelPos===frame.width*4*(lineIndex+1)){
-                                    lineIndex++;
+                                    ++lineIndex;
                                     if(InterlaceOffsets[pass]+InterlaceSteps[pass]*lineIndex>=frame.height)break;
                                 }
                             }
                         await progressCallback?.((byteStream.pos+1)/byteStream.data.length,getFrameIndex(),image,[frame.left,frame.top],[gif.width,gif.height]);
+                        if(abortSignal.aborted)throw abortSignal;
                     }
                     frame.image=image;
                 }else{
@@ -282,17 +243,18 @@ export const decodeGIF=async(gifURL,avgAlpha,fetchProgressCallback,sizeCheck,pro
                         if(code===clearCode){
                             size=minCodeSize+1;
                             dic.length=clearCode+2;
-                            for(let i=0;i<dic.length;i++)dic[i]=i<clearCode?[i]:[];
+                            for(let i=0;i<dic.length;++i)dic[i]=i<clearCode?[i]:[];
                         }else{
                             //~ clear code +1 = end of information code
                             if(code===clearCode+1)break;
                             if(code>=dic.length)dic.push(dic[last].concat(dic[last][0]));
                             else if(last!==clearCode)dic.push(dic[last].concat(dic[code][0]));
-                            for(let i=0;i<dic[code].length;i++)image.data.set(getColor(dic[code][i]),pixelPos+=4);
-                            if(dic.length>=(1<<size)&&size<0xC)size++;
+                            for(let i=0;i<dic[code].length;++i)image.data.set(getColor(dic[code][i]),pixelPos+=4);
+                            if(dic.length>=(1<<size)&&size<12)++size;
                         }
                     }
                     await progressCallback?.((byteStream.pos+1)/byteStream.data.length,getFrameIndex(),frame.image=image,[frame.left,frame.top],[gif.width,gif.height]);
+                    if(abortSignal.aborted)throw abortSignal;
                 }
                 getLastBlock(`frame [${getFrameIndex()}]`);
             break;
@@ -302,7 +264,7 @@ export const decodeGIF=async(gifURL,avgAlpha,fetchProgressCallback,sizeCheck,pro
                         //~ parse graphics control extension data - applies to the next frame in the byte stream
                         const frame=gif.frames[getFrameIndex()];
                         //~ block size (1B) - static 4 - byte size of the block up to (but excluding) the Block Terminator
-                        byteStream.pos++;
+                        ++byteStream.pos;
                         //~ packed byte (1B) >
                         const packedByte=byteStream.nextByte();
                         //~ > reserved (3b) - reserved for future use
@@ -314,12 +276,12 @@ export const decodeGIF=async(gifURL,avgAlpha,fetchProgressCallback,sizeCheck,pro
                         //~ > transparent color flag (1b) - indicates that, if set, the following transparency index should be used to ignore each color with this index in the following frame
                         const transparencyFlag=(packedByte&1)===1;
                         //~ delay time (2B) - if non-zero specifies the number of 1/100 seconds (here converted to milliseconds) to delay (rendering of) the following frame
-                        frame.delayTime=byteStream.nextTwoBytes()*0xA;
+                        frame.delayTime=byteStream.nextTwoBytes()*10;
                         //~ transparency index (1B) - color index of transparent color for following frame (only use if transparency flag is set - byte is always present)
                         if(transparencyFlag)frame.transparentColorIndex=byteStream.nextByte();
-                        else byteStream.pos++;
+                        else ++byteStream.pos;
                         //~ block terminator (1B) - static 0 - marks end of graphics control extension block
-                        byteStream.pos++;
+                        ++byteStream.pos;
                         getLastBlock(`graphics control extension for frame [${getFrameIndex()}]`);
                     break;
                     case GIFDataHeaders.ApplicationExtension:
@@ -327,7 +289,7 @@ export const decodeGIF=async(gifURL,avgAlpha,fetchProgressCallback,sizeCheck,pro
                         /**@type {ApplicationExtension}*/
                         const applicationExtension={};
                         //~ block size (1B) - static 11 - byte size of the block up to (but excluding) the application data blocks
-                        byteStream.pos++;
+                        ++byteStream.pos;
                         //~ application identifier (8B) - 8 character string identifying the application (of this extension block)
                         applicationExtension.identifier=byteStream.getString(8);
                         //~ application authentication code (3B) - 3 bytes to authenticate the application identifier
@@ -347,7 +309,7 @@ export const decodeGIF=async(gifURL,avgAlpha,fetchProgressCallback,sizeCheck,pro
                         //~ parse plain text extension - text to render with the following frame (needs global color table)
                         if(gif.globalColorTable.length===0)throw new EvalError("plain text extension without global color table");
                         //~ block size (1B) - static 12 - byte size of the block up to (but excluding) the plain text data blocks
-                        byteStream.pos++;
+                        ++byteStream.pos;
                         /**@type {PlainTextData}*/
                         const plainTextData={};
                         //~ text grid left position (2B) - position of the left edge of text grid (in pixels) within the GIF (from the left edge)
@@ -373,7 +335,7 @@ export const decodeGIF=async(gifURL,avgAlpha,fetchProgressCallback,sizeCheck,pro
                     break;
                     default:
                         const extID=byteStream.data[byteStream.pos-1];
-                        getLastBlock(`unknown extension [${gif.unknownExtensions.length}] #${extID.toString(0x10).toUpperCase().padStart(2,'0')}`);
+                        getLastBlock(`unknown extension [${gif.unknownExtensions.length}] #${extID.toString(16).toUpperCase().padStart(2,'0')}`);
                         //~ read unknown extension with unknown length
                         gif.unknownExtensions.push([extID,byteStream.readSubBlocksBin()]);
                     break;
@@ -383,129 +345,168 @@ export const decodeGIF=async(gifURL,avgAlpha,fetchProgressCallback,sizeCheck,pro
         }
         return false;
     }
-    return new Promise((resolve,reject)=>{
-        "use strict";
-        const xhr=new XMLHttpRequest();
-        xhr.responseType="arraybuffer";
-        xhr.onprogress=ev=>{
-            "use strict";
-            fetchProgressCallback?.(ev.loaded,ev.lengthComputable?ev.total:null);
-        };
-        xhr.onload=async()=>{
-            "use strict";
-            if(xhr.status<0xC8||xhr.status>=0x12C){reject(`loading error [${xhr.status}]`);return;}
-            if(!(await(sizeCheck?.(xhr.response?.byteLength??NaN)??true))){reject("file to large");return;}
-            //? https://www.w3.org/Graphics/GIF/spec-gif89a.txt
-            //? https://www.matthewflickinger.com/lab/whatsinagif/bits_and_bytes.asp
-            //~ load stream and start decoding
-            /**@type {GIF} the output gif object*/
-            const gif={
+    const abortWrapper=new AbortController();
+    if(abortSignal.aborted)abortWrapper.abort(abortWrapper);
+    else abortSignal.addEventListener("abort",()=>abortWrapper.abort(abortWrapper),{passive:true,once:true,signal:abortWrapper.signal});
+    const response=await fetch(gifURL,{credentials:"omit",referrer:"",signal:abortWrapper.signal}).catch(err=>{
+        if(err===abortWrapper)throw abortSignal.reason;
+        if(err instanceof TypeError)throw"fetch error: network error";
+        throw"fetch error (connecting)";
+    });
+    if(response.redirected)console.info("Got redirected to: %s",response.url);
+    if(!response.ok)throw`fetch error: recieved ${response.status}`;
+    const raw=await response.arrayBuffer().catch(err=>{
+        if(err instanceof DOMException&&err.name==="AbortError")throw abortSignal.reason;
+        if(err instanceof TypeError)throw"fetch error: could not read resource";
+        if(err instanceof RangeError)throw"fetch error: resource to large";
+        throw"fetch error (reading)";
+    });
+    if(!(await(sizeCheck?.(raw.byteLength)??true)))throw"file to large";
+    /**@type {ByteStream}*/
+    const byteStream=Object.preventExtensions({
+        len:raw.byteLength,
+        pos:0,
+        data:new Uint8ClampedArray(raw),
+        nextByte(){
+            if(this.pos+1>=this.len)throw RangeError("reading out of range");
+            return this.data[this.pos++];
+        },
+        nextTwoBytes(){
+            if(this.pos>=this.len)throw RangeError("reading out of range");
+            this.pos+=2;
+            return this.data[this.pos-2]+(this.data[this.pos-1]<<8);
+        },
+        getString(count){
+            if(this.pos+count>=this.len)throw RangeError("reading out of range");
+            let s="";
+            for(;--count>=0;s+=String.fromCharCode(this.data[this.pos++]));
+            return s;
+        },
+        readSubBlocks(){
+            let blockString="",size=0;
+            do{
+                size=this.data[this.pos++];
+                if(this.pos+size>this.len)throw RangeError("reading out of range");
+                for(let count=size;--count>=0;blockString+=String.fromCharCode(this.data[this.pos++]));
+            }while(size!==0);
+            return blockString;
+        },
+        readSubBlocksBin(){
+            let size=0,len=0;
+            for(let offset=0;(size=this.data[this.pos+offset])!==0;offset+=size+1){
+                if(this.pos+offset>=this.len)throw RangeError("reading out of range");
+                len+=size;
+            }
+            const blockData=new Uint8Array(len);
+            for(let i=0;(size=this.data[this.pos++])!==0;)
+                for(let count=size;--count>=0;blockData[i++]=this.data[this.pos++]);
+            return blockData;
+        },
+        skipSubBlocks(){
+            for(;this.data[this.pos]!==0;this.pos+=this.data[this.pos]+1);
+            if(++this.pos>=this.len)throw RangeError("reading out of range");
+        }
+    });
+    if(abortSignal.aborted)throw abortSignal.reason;
+    //? https://www.w3.org/Graphics/GIF/spec-gif89a.txt
+    //? https://www.matthewflickinger.com/lab/whatsinagif/bits_and_bytes.asp
+    //~ load stream and start decoding
+    /**@type {GIF} the output gif object*/
+    const gif={
+        width:0,
+        height:0,
+        totalTime:0,
+        colorRes:0,
+        pixelAspectRatio:0,
+        frames:[],
+        sortFlag:false,
+        globalColorTable:[],
+        backgroundColorIndex:null,
+        comments:[],
+        applicationExtensions:[],
+        unknownExtensions:[]
+    };
+    //~ signature (3B) and version (3B)
+    if(byteStream.getString(6)!=="GIF89a")throw"not a supported GIF file";
+    //~ width (2B) - in pixels
+    gif.width=byteStream.nextTwoBytes();
+    //~ height (2B) - in pixels
+    gif.height=byteStream.nextTwoBytes();
+    //~ packed byte (1B) >
+    const packedByte=byteStream.nextByte();
+    //~ > global color table flag (1b) - if there will be a global color table
+    const globalColorTableFlag=(packedByte&0x80)===0x80;
+    //~ > color resolution (3b) - bits per color minus 1 [1-8 bits] (256 colors max)
+    gif.colorRes=(packedByte&0x70)>>>4;
+    //~ > sort flag (1b) - if the colors in the global color table are ordered after decreasing importance
+    gif.sortFlag=(packedByte&8)===8;
+    //~ > size of global color table (3b) - number of bits minus 1 [1-8 bits] (256 colors max)
+    const globalColorCount=1<<((packedByte&7)+1);
+    //~ background color index (1B) - when global color table exists this points to the color (index) that should be used for pixels without color data (byte is always present)
+    if(globalColorTableFlag)gif.backgroundColorIndex=byteStream.nextByte();
+    else ++byteStream.pos;
+    //~ pixel aspect ratio (1B) - if non zero the pixel aspect ratio will be `(value + 15) / 64` from 4:1 to 1:4 in 1/64th increments
+    gif.pixelAspectRatio=byteStream.nextByte();
+    if(gif.pixelAspectRatio!==0)gif.pixelAspectRatio=(gif.pixelAspectRatio+15)/64;
+    //~ parse global color table if there is one
+    if(globalColorTableFlag)gif.globalColorTable=parseColorTable(byteStream,globalColorCount);
+    //~ parse other blocks ↓
+    let frameIndex=-1,
+        incrementFrameIndex=true,
+        lastBlock="parsing global GIF info";
+    /**
+     * ### Get the index of the current frame
+     * @param {boolean} [increment] - if the frame index should increse before the next cycle - default `false`
+     * @returns {number} current frame index
+     */
+    const getframeIndex=increment=>{
+        if(increment??false)incrementFrameIndex=true;
+        return frameIndex;
+    };
+    /**
+     * ### Get the last block parsed
+     * @param {string} [replace] - if given replaces the current "last block" value with this
+     * @returns {string} last block parsed
+     */
+    const getLastBlock=replace=>{
+        if(replace==null)return lastBlock;
+        return lastBlock=replace;
+    };
+    try{
+        do{
+            if(abortSignal.aborted)throw abortSignal;
+            if(incrementFrameIndex){
+                gif.frames.push({
+                    left:0,
+                    top:0,
                     width:0,
                     height:0,
-                    totalTime:0,
-                    colorRes:0,
-                    pixelAspectRatio:0,
-                    frames:[],
+                    disposalMethod:DisposalMethod.Unspecified,
+                    transparentColorIndex:null,
+                    image:new ImageData(1,1,{colorSpace:"srgb"}),
+                    plainTextData:null,
+                    userInputDelayFlag:false,
+                    delayTime:0,
                     sortFlag:false,
-                    globalColorTable:[],
-                    backgroundColorIndex:null,
-                    comments:[],
-                    applicationExtensions:[],
-                    unknownExtensions:[]
-                },
-                byteStream=newByteStream(xhr.response);
-            //~ signature (3B) and version (3B)
-            if(byteStream.getString(6)!=="GIF89a"){reject("not a supported GIF file");return;}
-            //~ width (2B) - in pixels
-            gif.width=byteStream.nextTwoBytes();
-            //~ height (2B) - in pixels
-            gif.height=byteStream.nextTwoBytes();
-            //~ packed byte (1B) >
-            const packedByte=byteStream.nextByte();
-            //~ > global color table flag (1b) - if there will be a global color table
-            const globalColorTableFlag=(packedByte&0x80)===0x80;
-            //~ > color resolution (3b) - bits per color minus 1 [1-8 bits] (256 colors max)
-            gif.colorRes=(packedByte&0x70)>>>4;
-            //~ > sort flag (1b) - if the colors in the global color table are ordered after decreasing importance
-            gif.sortFlag=(packedByte&8)===8;
-            //~ > size of global color table (3b) - number of bits minus 1 [1-8 bits] (256 colors max)
-            const globalColorCount=1<<((packedByte&7)+1);
-            //~ background color index (1B) - when global color table exists this points to the color (index) that should be used for pixels without color data (byte is always present)
-            if(globalColorTableFlag)gif.backgroundColorIndex=byteStream.nextByte();
-            else byteStream.pos++;
-            //~ pixel aspect ratio (1B) - if non zero the pixel aspect ratio will be `(value + 15) / 64` from 4:1 to 1:4 in 1/64th increments
-            gif.pixelAspectRatio=byteStream.nextByte();
-            if(gif.pixelAspectRatio!==0)gif.pixelAspectRatio=(gif.pixelAspectRatio+0xF)/0x40;
-            //~ parse global color table if there is one
-            if(globalColorTableFlag)gif.globalColorTable=parseColorTable(byteStream,globalColorCount);
-            //~ parse other blocks ↓
-            let frameIndex=-1,
-                incrementFrameIndex=true,
-                lastBlock="parsing global GIF info";
-            /**
-             * ## Get the index of the current frame
-             * @param {boolean} [increment] - if the frame index should increse before the next cycle - default `false`
-             * @returns {number} current frame index
-             */
-            const getframeIndex=increment=>{
-                "use strict";
-                if(increment??false)incrementFrameIndex=true;
-                return frameIndex;
-            };
-            /**
-             * ## Get the last block parsed
-             * @param {string} [replace] - if given replaces the current "last block" value with this
-             * @returns {string} last block parsed
-             */
-            const getLastBlock=replace=>{
-                "use strict";
-                if(replace==null)return lastBlock;
-                return lastBlock=replace;
-            };
-            try{
-                do{
-                    if(incrementFrameIndex){
-                        gif.frames.push({
-                            left:0,
-                            top:0,
-                            width:0,
-                            height:0,
-                            disposalMethod:DisposalMethod.Unspecified,
-                            transparentColorIndex:null,
-                            image:new ImageData(1,1,{colorSpace:"srgb"}),
-                            plainTextData:null,
-                            userInputDelayFlag:false,
-                            delayTime:0,
-                            sortFlag:false,
-                            localColorTable:[],
-                            reserved:0,
-                            GCreserved:0,
-                        });
-                        frameIndex++;
-                        incrementFrameIndex=false;
-                    }
-                }while(!await parseBlock(byteStream,gif,getframeIndex,getLastBlock));
-                gif.frames.length--;
-                for(const frame of gif.frames){
-                    //~ set total time to infinity if the user input delay flag is set and there is no timeout
-                    if(frame.userInputDelayFlag&&frame.delayTime===0){
-                        gif.totalTime=Infinity;
-                        break;
-                    }
-                    gif.totalTime+=frame.delayTime;
-                }
-                resolve(gif);
-                return;
-            }catch(error){
-                if(error instanceof EvalError){reject(`error while parsing frame [${frameIndex}] "${error.message}"`);return;}
-                throw error;
+                    localColorTable:[],
+                    reserved:0,
+                    GCreserved:0,
+                });
+                ++frameIndex;
+                incrementFrameIndex=false;
             }
-        };
-        xhr.onerror=()=>reject("fetch error");
-        xhr.onabort=()=>reject("fetch aborted");
-        xhr.open("GET",gifURL,true);
-        xhr.send();
-    });
+        }while(!await parseBlock(byteStream,gif,getframeIndex,getLastBlock));
+        --gif.frames.length;
+        for(const frame of gif.frames){
+            //~ set total time to infinity if the user input delay flag is set and there is no timeout
+            if(frame.userInputDelayFlag&&frame.delayTime===0){
+                gif.totalTime=Infinity;
+                break;
+            }
+            gif.totalTime+=frame.delayTime;
+        }
+        return gif;
+    }catch(err){throw err===abortSignal?abortSignal.reason:`error while parsing frame [${frameIndex}] "${err instanceof EvalError||err instanceof RangeError?err.message:"unknown error"}"`;}
 };
 /**
  * ## Extract the animation loop amount from a {@linkcode GIF}

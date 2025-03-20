@@ -1,5 +1,5 @@
 // @ts-check
-"use strict";
+"use strict";//~ counts for the whole file
 
 //~  _____ ___________       _                    _
 //~ |  __ \_   _|  ___|     | |                  | |
@@ -8,7 +8,8 @@
 //~ | |_\ \_| |_| |     | (_| |  __/ (_| (_) | (_| |  __/
 //~  \____/\___/\_|      \__,_|\___|\___\___/ \__,_|\___|
 
-// BUG requires perfect files → promise-reject when reading a corrupt or incomplete file
+// TODO ? test if corrupted files throw errors ~ like color index out of range...
+// TODO ~ build single class with all features; for ease of use (make import-able from anywhere and replace GIFdecodeModule.js with new GIF.js and remove here)
 
 /**
  * @typedef {Object} GIF
@@ -68,30 +69,34 @@ const DisposalMethod=Object.freeze({
 /**
  * ## Decodes a GIF into its components for rendering on a canvas
  * @param {string} gifURL - the URL of a GIF file
- * @param {boolean} [avgAlpha] - if this is `true` then, when encountering a transparent pixel, it uses the average value of the pixels RGB channels to calculate the alpha channels value, otherwise alpha channel is either 0 or 1 - _default `false`_
- * @param {(loaded:number,total:number|null)=>any} [fetchProgressCallback] - Optional callback for showing progress of fetching the image data (in bytes)
+ * @param {AbortSignal} abortSignal - aboard fetching/parsing with this (via {@linkcode AbortController})
  * @param {(byteLength:number)=>(Promise<boolean>|boolean)} [sizeCheck] - Optional check if the loaded file should be processed if this yields `false` then it will reject with `file to large`
  * @param {(percentageRead:number,frameIndex:number,frame:ImageData,framePos:[number,number],gifSize:[number,number])=>any} [progressCallback] - Optional callback for showing progress of decoding process (when GIF is interlaced calls after each pass (4x on the same frame)) - if asynchronous, it waits for it to resolve before continuing decoding
- * @returns {Promise<GIF>} the GIF with each frame decoded separately - may reject for the following reasons
- * - `fetch error` when trying to fetch the GIF from {@linkcode gifURL} (probably blocked by CORS security options)
- * - `fetch aborted` when trying to fetch the GIF from {@linkcode gifURL}
- * - `loading error [CODE]` when URL yields a status code that's NOT between 200 and 299 (inclusive)
+ * @returns {Promise<GIF>} the GIF with each frame decoded separately - may reject (throw) for the following reasons
+ * - {@linkcode AbortSignal.reason} of {@linkcode abortSignal} when it triggers
+ * - fetch errors when trying to fetch the GIF from {@linkcode gifURL}:
+ * - - `fetch error: network error`
+ * - - `fetch error (connecting)` any unknown error during {@linkcode fetch}
+ * - - `fetch error: recieved STATUS_CODE` when URL yields a status code that's NOT between 200 and 299 (inclusive)
+ * - - `fetch error: could not read resource`
+ * - - `fetch error: resource to large` (not from {@linkcode sizeCheck})
+ * - - `fetch error (reading)` any unknown error during {@linkcode Response.arrayBuffer}
  * - `file to large` when {@linkcode sizeCheck} yields `false`
  * - `not a supported GIF file` when it's not a GIF file or the version is NOT `GIF89a`
  * - `error while parsing frame [INDEX] "ERROR"` while decoding GIF - one of the following
  * - - `GIF frame size is to large`
  * - - `plain text extension without global color table`
  * - - `undefined block found`
- * @throws {TypeError} if {@linkcode gifURL} is not a string, {@linkcode fetchProgressCallback}, {@linkcode sizeCheck}, or {@linkcode progressCallback} is given but not a function, or {@linkcode avgAlpha} is given but not a boolean
+ * - - `reading out of range` (unexpected end of file during decoding)
+ * - - `unknown error`
+ * @throws {TypeError} if {@linkcode gifURL} is not a string; {@linkcode abortSignal} is not an abort signal; or {@linkcode sizeCheck} or {@linkcode progressCallback} are given but aren't functions
  */
-const decodeGIF=async(gifURL,avgAlpha,fetchProgressCallback,sizeCheck,progressCallback)=>{
-    "use strict";
+const decodeGIF=async(gifURL,abortSignal,sizeCheck,progressCallback)=>{
     if(typeof gifURL!=="string")throw new TypeError("[decodeGIF] gifURL is not a string");
-    avgAlpha??=false;
-    if(typeof avgAlpha!=="boolean")throw TypeError("[decodeGIF] avgAlpha is not a boolean");
-    if(fetchProgressCallback!=null&&typeof fetchProgressCallback!=="function")throw new TypeError("[decodeGIF] fetchProgressCallback is not a function");
+    if(!(abortSignal instanceof AbortSignal))throw new TypeError("[decodeGIF] abortSignal is not an abort signal");
     if(sizeCheck!=null&&typeof sizeCheck!=="function")throw new TypeError("[decodeGIF] sizeCheck is not a function");
     if(progressCallback!=null&&typeof progressCallback!=="function")throw new TypeError("[decodeGIF] progressCallback is not a function");
+    if(abortSignal.aborted)throw abortSignal.reason;
     /**
      * @typedef {Object} ByteStream
      * @property {number} pos current position in `data`
@@ -102,50 +107,8 @@ const decodeGIF=async(gifURL,avgAlpha,fetchProgressCallback,sizeCheck,progressCa
      * @property {()=>string} readSubBlocks reads a set of blocks as a string
      * @property {()=>Uint8Array} readSubBlocksBin reads a set of blocks as binary
      * @property {()=>void} skipSubBlocks skips the next set of blocks in the stream
+     * @throws {RangeError} if any method tries to read out of bounds
      */
-    /**@type {(bytes:Iterable<number>)=>ByteStream}*/
-    const newByteStream=(bytes)=>Object.preventExtensions({
-        pos:0,
-        data:new Uint8ClampedArray(bytes),
-        nextByte(){
-            "use strict";
-            return this.data[this.pos++];
-        },
-        nextTwoBytes(){
-            "use strict";
-            this.pos+=2;
-            return this.data[this.pos-2]+(this.data[this.pos-1]<<8);
-        },
-        getString(count){
-            "use strict";
-            let s="";
-            for(;--count>=0;s+=String.fromCharCode(this.data[this.pos++]));
-            return s;
-        },
-        readSubBlocks(){
-            "use strict";
-            let blockString="",size=0;
-            do{
-                size=this.data[this.pos++];
-                for(let count=size;--count>=0;blockString+=String.fromCharCode(this.data[this.pos++]));
-            }while(size!==0);
-            return blockString;
-        },
-        readSubBlocksBin(){
-            "use strict";
-            let size=0,len=0;
-            for(let offset=0;(size=this.data[this.pos+offset])!==0;offset+=size+1)len+=size;
-            const blockData=new Uint8Array(len);
-            for(let i=0;(size=this.data[this.pos++])!==0;)
-                for(let count=size;--count>=0;blockData[i++]=this.data[this.pos++]);
-            return blockData;
-        },
-        skipSubBlocks(){
-            "use strict";
-            for(;this.data[this.pos]!==0;this.pos+=this.data[this.pos]+1);
-            this.pos++;
-        }
-    });
     /**@type {readonly[0,4,2,1]}*/
     const InterlaceOffsets=Object.freeze([0,4,2,1]);
     /**@type {readonly[8,8,4,2]}*/
@@ -161,16 +124,15 @@ const decodeGIF=async(gifURL,avgAlpha,fetchProgressCallback,sizeCheck,progressCa
         /**trailer > end of file / GIF data*/EndOfFile:0x3B,
     });
     /**
-     * ## Get a color table of length `count`
+     * ### Get a color table of length {@linkcode count}
      * @param {ByteStream} byteStream - GIF data stream
-     * @param {number} count - number of colours to read from `byteStream`
+     * @param {number} count - number of colours to read from {@linkcode byteStream}
      * @returns {[number,number,number][]} an array of RGB color values
      */
     const parseColorTable=(byteStream,count)=>{
-        "use strict";
         /**@type {[number,number,number][]}*/
         const colors=[];
-        for(let i=0;i<count;i++){
+        for(let i=0;i<count;++i){
             colors.push([
                 byteStream.data[byteStream.pos],
                 byteStream.data[byteStream.pos+1],
@@ -181,19 +143,21 @@ const decodeGIF=async(gifURL,avgAlpha,fetchProgressCallback,sizeCheck,progressCa
         return colors;
     }
     /**
-     * ## Parsing one block from GIF data stream
+     * ### Parsing one block from GIF data stream
      * @param {ByteStream} byteStream - GIF data stream
      * @param {GIF} gif - GIF object to write to
-     * @param {(increment?:boolean)=>number} getFrameIndex - function to get current frame index in `GIF.frames` (optionally increment before next cycle)
+     * @param {(increment?:boolean)=>number} getFrameIndex - function to get current frame index in {@linkcode GIF.frames} (optionally increment before next cycle)
      * @param {(replace?:string)=>string} getLastBlock - function to get last block read (optionally replace for next call)
      * @returns {Promise<boolean>} true if EOF was reached
      * @throws {EvalError} for the following reasons
      * - GIF frame size is to large
      * - plain text extension without global color table
      * - undefined block found
+     * - unknown error
+     * @throws {RangeError} if {@linkcode byteStream} throws for out of bounds reading
+     * @throws {typeof abortSignal} if {@linkcode abortSignal} triggered
      */
     const parseBlock=async(byteStream,gif,getFrameIndex,getLastBlock)=>{
-        "use strict";
         switch(byteStream.nextByte()){
             case GIFDataHeaders.EndOfFile:return true;
             case GIFDataHeaders.Image:
@@ -223,17 +187,15 @@ const decodeGIF=async(gifURL,avgAlpha,fetchProgressCallback,sizeCheck,progressCa
                 if(localColorTableFlag)frame.localColorTable=parseColorTable(byteStream,localColorCount);
                 //~ decode frame image data (GIF-LZW) - image data
                 /**
-                 * ## Get color from color tables (transparent if index is equal to the transparency index)
+                 * #### Get color from color tables (transparent if index is equal to the transparency index)
                  * @param {number} index - index into global/local color table
                  * @returns {[number,number,number,number]} RGBA color value
                  */
                 const getColor=index=>{
-                    "use strict";
                     const[R,G,B]=(localColorTableFlag?frame.localColorTable:gif.globalColorTable)[index];
-                    return[R,G,B,index===frame.transparentColorIndex?(avgAlpha?~~((R+G+B)/3):0):0xFF];
+                    return[R,G,B,index===frame.transparentColorIndex?0:255];
                 }
                 const image=(()=>{
-                    "use strict";
                     try{return new ImageData(frame.width,frame.height,{colorSpace:"srgb"});}
                     catch(error){
                         if(error instanceof DOMException&&error.name==="IndexSizeError")return null;
@@ -245,19 +207,18 @@ const decodeGIF=async(gifURL,avgAlpha,fetchProgressCallback,sizeCheck,progressCa
                 const imageData=byteStream.readSubBlocksBin();
                 const clearCode=1<<minCodeSize;
                 /**
-                 * ## Read {@linkcode len} bits from {@linkcode imageData} at {@linkcode pos}
+                 * #### Read {@linkcode len} bits from {@linkcode imageData} at {@linkcode pos}
                  * @param {number} pos - bit position in {@linkcode imageData}
                  * @param {number} len - bit length to read [1 to 12 bits]
                  * @returns {number} - {@linkcode len} bits at {@linkcode pos}
                  */
                 const readBits=(pos,len)=>{
-                    "use strict";
                     const bytePos=pos>>>3,
                         bitPos=pos&7;
-                    return((imageData[bytePos]+(imageData[bytePos+1]<<8)+(imageData[bytePos+2]<<0x10))&(((1<<len)-1)<<bitPos))>>>bitPos;
+                    return((imageData[bytePos]+(imageData[bytePos+1]<<8)+(imageData[bytePos+2]<<16))&(((1<<len)-1)<<bitPos))>>>bitPos;
                 };
                 if(interlacedFlag){
-                    for(let code=0,size=minCodeSize+1,pos=0,dic=[[0]],pass=0;pass<4;pass++){
+                    for(let code=0,size=minCodeSize+1,pos=0,dic=[[0]],pass=0;pass<4;++pass){
                         if(InterlaceOffsets[pass]<frame.height)
                             for(let pixelPos=0,lineIndex=0;true;){
                                 const last=code;
@@ -266,22 +227,23 @@ const decodeGIF=async(gifURL,avgAlpha,fetchProgressCallback,sizeCheck,progressCa
                                 if(code===clearCode){
                                     size=minCodeSize+1;
                                     dic.length=clearCode+2;
-                                    for(let i=0;i<dic.length;i++)dic[i]=i<clearCode?[i]:[];
+                                    for(let i=0;i<dic.length;++i)dic[i]=i<clearCode?[i]:[];
                                 }else{
                                     if(code>=dic.length)dic.push(dic[last].concat(dic[last][0]));
                                     else if(last!==clearCode)dic.push(dic[last].concat(dic[code][0]));
-                                    for(let i=0;i<dic[code].length;i++){
+                                    for(let i=0;i<dic[code].length;++i){
                                         image.data.set(getColor(dic[code][i]),InterlaceOffsets[pass]*frame.width+InterlaceSteps[pass]*lineIndex+(pixelPos%(frame.width*4)));
                                         pixelPos+=4;
                                     }
-                                    if(dic.length===(1<<size)&&size<0xC)size++;
+                                    if(dic.length===(1<<size)&&size<12)++size;
                                 }
                                 if(pixelPos===frame.width*4*(lineIndex+1)){
-                                    lineIndex++;
+                                    ++lineIndex;
                                     if(InterlaceOffsets[pass]+InterlaceSteps[pass]*lineIndex>=frame.height)break;
                                 }
                             }
                         await progressCallback?.((byteStream.pos+1)/byteStream.data.length,getFrameIndex(),image,[frame.left,frame.top],[gif.width,gif.height]);
+                        if(abortSignal.aborted)throw abortSignal;
                     }
                     frame.image=image;
                 }else{
@@ -292,17 +254,18 @@ const decodeGIF=async(gifURL,avgAlpha,fetchProgressCallback,sizeCheck,progressCa
                         if(code===clearCode){
                             size=minCodeSize+1;
                             dic.length=clearCode+2;
-                            for(let i=0;i<dic.length;i++)dic[i]=i<clearCode?[i]:[];
+                            for(let i=0;i<dic.length;++i)dic[i]=i<clearCode?[i]:[];
                         }else{
                             //~ clear code +1 = end of information code
                             if(code===clearCode+1)break;
                             if(code>=dic.length)dic.push(dic[last].concat(dic[last][0]));
                             else if(last!==clearCode)dic.push(dic[last].concat(dic[code][0]));
-                            for(let i=0;i<dic[code].length;i++)image.data.set(getColor(dic[code][i]),pixelPos+=4);
-                            if(dic.length>=(1<<size)&&size<0xC)size++;
+                            for(let i=0;i<dic[code].length;++i)image.data.set(getColor(dic[code][i]),pixelPos+=4);
+                            if(dic.length>=(1<<size)&&size<12)++size;
                         }
                     }
                     await progressCallback?.((byteStream.pos+1)/byteStream.data.length,getFrameIndex(),frame.image=image,[frame.left,frame.top],[gif.width,gif.height]);
+                    if(abortSignal.aborted)throw abortSignal;
                 }
                 getLastBlock(`frame [${getFrameIndex()}]`);
             break;
@@ -312,7 +275,7 @@ const decodeGIF=async(gifURL,avgAlpha,fetchProgressCallback,sizeCheck,progressCa
                         //~ parse graphics control extension data - applies to the next frame in the byte stream
                         const frame=gif.frames[getFrameIndex()];
                         //~ block size (1B) - static 4 - byte size of the block up to (but excluding) the Block Terminator
-                        byteStream.pos++;
+                        ++byteStream.pos;
                         //~ packed byte (1B) >
                         const packedByte=byteStream.nextByte();
                         //~ > reserved (3b) - reserved for future use
@@ -324,12 +287,12 @@ const decodeGIF=async(gifURL,avgAlpha,fetchProgressCallback,sizeCheck,progressCa
                         //~ > transparent color flag (1b) - indicates that, if set, the following transparency index should be used to ignore each color with this index in the following frame
                         const transparencyFlag=(packedByte&1)===1;
                         //~ delay time (2B) - if non-zero specifies the number of 1/100 seconds (here converted to milliseconds) to delay (rendering of) the following frame
-                        frame.delayTime=byteStream.nextTwoBytes()*0xA;
+                        frame.delayTime=byteStream.nextTwoBytes()*10;
                         //~ transparency index (1B) - color index of transparent color for following frame (only use if transparency flag is set - byte is always present)
                         if(transparencyFlag)frame.transparentColorIndex=byteStream.nextByte();
-                        else byteStream.pos++;
+                        else ++byteStream.pos;
                         //~ block terminator (1B) - static 0 - marks end of graphics control extension block
-                        byteStream.pos++;
+                        ++byteStream.pos;
                         getLastBlock(`graphics control extension for frame [${getFrameIndex()}]`);
                     break;
                     case GIFDataHeaders.ApplicationExtension:
@@ -337,7 +300,7 @@ const decodeGIF=async(gifURL,avgAlpha,fetchProgressCallback,sizeCheck,progressCa
                         /**@type {ApplicationExtension}*/
                         const applicationExtension={};
                         //~ block size (1B) - static 11 - byte size of the block up to (but excluding) the application data blocks
-                        byteStream.pos++;
+                        ++byteStream.pos;
                         //~ application identifier (8B) - 8 character string identifying the application (of this extension block)
                         applicationExtension.identifier=byteStream.getString(8);
                         //~ application authentication code (3B) - 3 bytes to authenticate the application identifier
@@ -357,7 +320,7 @@ const decodeGIF=async(gifURL,avgAlpha,fetchProgressCallback,sizeCheck,progressCa
                         //~ parse plain text extension - text to render with the following frame (needs global color table)
                         if(gif.globalColorTable.length===0)throw new EvalError("plain text extension without global color table");
                         //~ block size (1B) - static 12 - byte size of the block up to (but excluding) the plain text data blocks
-                        byteStream.pos++;
+                        ++byteStream.pos;
                         /**@type {PlainTextData}*/
                         const plainTextData={};
                         //~ text grid left position (2B) - position of the left edge of text grid (in pixels) within the GIF (from the left edge)
@@ -383,7 +346,7 @@ const decodeGIF=async(gifURL,avgAlpha,fetchProgressCallback,sizeCheck,progressCa
                     break;
                     default:
                         const extID=byteStream.data[byteStream.pos-1];
-                        getLastBlock(`unknown extension [${gif.unknownExtensions.length}] #${extID.toString(0x10).toUpperCase().padStart(2,'0')}`);
+                        getLastBlock(`unknown extension [${gif.unknownExtensions.length}] #${extID.toString(16).toUpperCase().padStart(2,'0')}`);
                         //~ read unknown extension with unknown length
                         gif.unknownExtensions.push([extID,byteStream.readSubBlocksBin()]);
                     break;
@@ -393,129 +356,168 @@ const decodeGIF=async(gifURL,avgAlpha,fetchProgressCallback,sizeCheck,progressCa
         }
         return false;
     }
-    return new Promise((resolve,reject)=>{
-        "use strict";
-        const xhr=new XMLHttpRequest();
-        xhr.responseType="arraybuffer";
-        xhr.onprogress=ev=>{
-            "use strict";
-            fetchProgressCallback?.(ev.loaded,ev.lengthComputable?ev.total:null);
-        };
-        xhr.onload=async()=>{
-            "use strict";
-            if(xhr.status<0xC8||xhr.status>=0x12C){reject(`loading error [${xhr.status}]`);return;}
-            if(!(await(sizeCheck?.(xhr.response?.byteLength??NaN)??true))){reject("file to large");return;}
-            //? https://www.w3.org/Graphics/GIF/spec-gif89a.txt
-            //? https://www.matthewflickinger.com/lab/whatsinagif/bits_and_bytes.asp
-            //~ load stream and start decoding
-            /**@type {GIF} the output gif object*/
-            const gif={
+    const abortWrapper=new AbortController();
+    if(abortSignal.aborted)abortWrapper.abort(abortWrapper);
+    else abortSignal.addEventListener("abort",()=>abortWrapper.abort(abortWrapper),{passive:true,once:true,signal:abortWrapper.signal});
+    const response=await fetch(gifURL,{credentials:"omit",referrer:"",signal:abortWrapper.signal}).catch(err=>{
+        if(err===abortWrapper)throw abortSignal.reason;
+        if(err instanceof TypeError)throw"fetch error: network error";
+        throw"fetch error (connecting)";
+    });
+    if(response.redirected)console.info("Got redirected to: %s",response.url);
+    if(!response.ok)throw`fetch error: recieved ${response.status}`;
+    const raw=await response.arrayBuffer().catch(err=>{
+        if(err instanceof DOMException&&err.name==="AbortError")throw abortSignal.reason;
+        if(err instanceof TypeError)throw"fetch error: could not read resource";
+        if(err instanceof RangeError)throw"fetch error: resource to large";
+        throw"fetch error (reading)";
+    });
+    if(!(await(sizeCheck?.(raw.byteLength)??true)))throw"file to large";
+    /**@type {ByteStream}*/
+    const byteStream=Object.preventExtensions({
+        len:raw.byteLength,
+        pos:0,
+        data:new Uint8ClampedArray(raw),
+        nextByte(){
+            if(this.pos+1>=this.len)throw RangeError("reading out of range");
+            return this.data[this.pos++];
+        },
+        nextTwoBytes(){
+            if(this.pos>=this.len)throw RangeError("reading out of range");
+            this.pos+=2;
+            return this.data[this.pos-2]+(this.data[this.pos-1]<<8);
+        },
+        getString(count){
+            if(this.pos+count>=this.len)throw RangeError("reading out of range");
+            let s="";
+            for(;--count>=0;s+=String.fromCharCode(this.data[this.pos++]));
+            return s;
+        },
+        readSubBlocks(){
+            let blockString="",size=0;
+            do{
+                size=this.data[this.pos++];
+                if(this.pos+size>this.len)throw RangeError("reading out of range");
+                for(let count=size;--count>=0;blockString+=String.fromCharCode(this.data[this.pos++]));
+            }while(size!==0);
+            return blockString;
+        },
+        readSubBlocksBin(){
+            let size=0,len=0;
+            for(let offset=0;(size=this.data[this.pos+offset])!==0;offset+=size+1){
+                if(this.pos+offset>=this.len)throw RangeError("reading out of range");
+                len+=size;
+            }
+            const blockData=new Uint8Array(len);
+            for(let i=0;(size=this.data[this.pos++])!==0;)
+                for(let count=size;--count>=0;blockData[i++]=this.data[this.pos++]);
+            return blockData;
+        },
+        skipSubBlocks(){
+            for(;this.data[this.pos]!==0;this.pos+=this.data[this.pos]+1);
+            if(++this.pos>=this.len)throw RangeError("reading out of range");
+        }
+    });
+    if(abortSignal.aborted)throw abortSignal.reason;
+    //? https://www.w3.org/Graphics/GIF/spec-gif89a.txt
+    //? https://www.matthewflickinger.com/lab/whatsinagif/bits_and_bytes.asp
+    //~ load stream and start decoding
+    /**@type {GIF} the output gif object*/
+    const gif={
+        width:0,
+        height:0,
+        totalTime:0,
+        colorRes:0,
+        pixelAspectRatio:0,
+        frames:[],
+        sortFlag:false,
+        globalColorTable:[],
+        backgroundColorIndex:null,
+        comments:[],
+        applicationExtensions:[],
+        unknownExtensions:[]
+    };
+    //~ signature (3B) and version (3B)
+    if(byteStream.getString(6)!=="GIF89a")throw"not a supported GIF file";
+    //~ width (2B) - in pixels
+    gif.width=byteStream.nextTwoBytes();
+    //~ height (2B) - in pixels
+    gif.height=byteStream.nextTwoBytes();
+    //~ packed byte (1B) >
+    const packedByte=byteStream.nextByte();
+    //~ > global color table flag (1b) - if there will be a global color table
+    const globalColorTableFlag=(packedByte&0x80)===0x80;
+    //~ > color resolution (3b) - bits per color minus 1 [1-8 bits] (256 colors max)
+    gif.colorRes=(packedByte&0x70)>>>4;
+    //~ > sort flag (1b) - if the colors in the global color table are ordered after decreasing importance
+    gif.sortFlag=(packedByte&8)===8;
+    //~ > size of global color table (3b) - number of bits minus 1 [1-8 bits] (256 colors max)
+    const globalColorCount=1<<((packedByte&7)+1);
+    //~ background color index (1B) - when global color table exists this points to the color (index) that should be used for pixels without color data (byte is always present)
+    if(globalColorTableFlag)gif.backgroundColorIndex=byteStream.nextByte();
+    else ++byteStream.pos;
+    //~ pixel aspect ratio (1B) - if non zero the pixel aspect ratio will be `(value + 15) / 64` from 4:1 to 1:4 in 1/64th increments
+    gif.pixelAspectRatio=byteStream.nextByte();
+    if(gif.pixelAspectRatio!==0)gif.pixelAspectRatio=(gif.pixelAspectRatio+15)/64;
+    //~ parse global color table if there is one
+    if(globalColorTableFlag)gif.globalColorTable=parseColorTable(byteStream,globalColorCount);
+    //~ parse other blocks ↓
+    let frameIndex=-1,
+        incrementFrameIndex=true,
+        lastBlock="parsing global GIF info";
+    /**
+     * ### Get the index of the current frame
+     * @param {boolean} [increment] - if the frame index should increse before the next cycle - default `false`
+     * @returns {number} current frame index
+     */
+    const getframeIndex=increment=>{
+        if(increment??false)incrementFrameIndex=true;
+        return frameIndex;
+    };
+    /**
+     * ### Get the last block parsed
+     * @param {string} [replace] - if given replaces the current "last block" value with this
+     * @returns {string} last block parsed
+     */
+    const getLastBlock=replace=>{
+        if(replace==null)return lastBlock;
+        return lastBlock=replace;
+    };
+    try{
+        do{
+            if(abortSignal.aborted)throw abortSignal;
+            if(incrementFrameIndex){
+                gif.frames.push({
+                    left:0,
+                    top:0,
                     width:0,
                     height:0,
-                    totalTime:0,
-                    colorRes:0,
-                    pixelAspectRatio:0,
-                    frames:[],
+                    disposalMethod:DisposalMethod.Unspecified,
+                    transparentColorIndex:null,
+                    image:new ImageData(1,1,{colorSpace:"srgb"}),
+                    plainTextData:null,
+                    userInputDelayFlag:false,
+                    delayTime:0,
                     sortFlag:false,
-                    globalColorTable:[],
-                    backgroundColorIndex:null,
-                    comments:[],
-                    applicationExtensions:[],
-                    unknownExtensions:[]
-                },
-                byteStream=newByteStream(xhr.response);
-            //~ signature (3B) and version (3B)
-            if(byteStream.getString(6)!=="GIF89a"){reject("not a supported GIF file");return;}
-            //~ width (2B) - in pixels
-            gif.width=byteStream.nextTwoBytes();
-            //~ height (2B) - in pixels
-            gif.height=byteStream.nextTwoBytes();
-            //~ packed byte (1B) >
-            const packedByte=byteStream.nextByte();
-            //~ > global color table flag (1b) - if there will be a global color table
-            const globalColorTableFlag=(packedByte&0x80)===0x80;
-            //~ > color resolution (3b) - bits per color minus 1 [1-8 bits] (256 colors max)
-            gif.colorRes=(packedByte&0x70)>>>4;
-            //~ > sort flag (1b) - if the colors in the global color table are ordered after decreasing importance
-            gif.sortFlag=(packedByte&8)===8;
-            //~ > size of global color table (3b) - number of bits minus 1 [1-8 bits] (256 colors max)
-            const globalColorCount=1<<((packedByte&7)+1);
-            //~ background color index (1B) - when global color table exists this points to the color (index) that should be used for pixels without color data (byte is always present)
-            if(globalColorTableFlag)gif.backgroundColorIndex=byteStream.nextByte();
-            else byteStream.pos++;
-            //~ pixel aspect ratio (1B) - if non zero the pixel aspect ratio will be `(value + 15) / 64` from 4:1 to 1:4 in 1/64th increments
-            gif.pixelAspectRatio=byteStream.nextByte();
-            if(gif.pixelAspectRatio!==0)gif.pixelAspectRatio=(gif.pixelAspectRatio+0xF)/0x40;
-            //~ parse global color table if there is one
-            if(globalColorTableFlag)gif.globalColorTable=parseColorTable(byteStream,globalColorCount);
-            //~ parse other blocks ↓
-            let frameIndex=-1,
-                incrementFrameIndex=true,
-                lastBlock="parsing global GIF info";
-            /**
-             * ## Get the index of the current frame
-             * @param {boolean} [increment] - if the frame index should increse before the next cycle - default `false`
-             * @returns {number} current frame index
-             */
-            const getframeIndex=increment=>{
-                "use strict";
-                if(increment??false)incrementFrameIndex=true;
-                return frameIndex;
-            };
-            /**
-             * ## Get the last block parsed
-             * @param {string} [replace] - if given replaces the current "last block" value with this
-             * @returns {string} last block parsed
-             */
-            const getLastBlock=replace=>{
-                "use strict";
-                if(replace==null)return lastBlock;
-                return lastBlock=replace;
-            };
-            try{
-                do{
-                    if(incrementFrameIndex){
-                        gif.frames.push({
-                            left:0,
-                            top:0,
-                            width:0,
-                            height:0,
-                            disposalMethod:DisposalMethod.Unspecified,
-                            transparentColorIndex:null,
-                            image:new ImageData(1,1,{colorSpace:"srgb"}),
-                            plainTextData:null,
-                            userInputDelayFlag:false,
-                            delayTime:0,
-                            sortFlag:false,
-                            localColorTable:[],
-                            reserved:0,
-                            GCreserved:0,
-                        });
-                        frameIndex++;
-                        incrementFrameIndex=false;
-                    }
-                }while(!await parseBlock(byteStream,gif,getframeIndex,getLastBlock));
-                gif.frames.length--;
-                for(const frame of gif.frames){
-                    //~ set total time to infinity if the user input delay flag is set and there is no timeout
-                    if(frame.userInputDelayFlag&&frame.delayTime===0){
-                        gif.totalTime=Infinity;
-                        break;
-                    }
-                    gif.totalTime+=frame.delayTime;
-                }
-                resolve(gif);
-                return;
-            }catch(error){
-                if(error instanceof EvalError){reject(`error while parsing frame [${frameIndex}] "${error.message}"`);return;}
-                throw error;
+                    localColorTable:[],
+                    reserved:0,
+                    GCreserved:0,
+                });
+                ++frameIndex;
+                incrementFrameIndex=false;
             }
-        };
-        xhr.onerror=()=>reject("fetch error");
-        xhr.onabort=()=>reject("fetch aborted");
-        xhr.open("GET",gifURL,true);
-        xhr.send();
-    });
+        }while(!await parseBlock(byteStream,gif,getframeIndex,getLastBlock));
+        --gif.frames.length;
+        for(const frame of gif.frames){
+            //~ set total time to infinity if the user input delay flag is set and there is no timeout
+            if(frame.userInputDelayFlag&&frame.delayTime===0){
+                gif.totalTime=Infinity;
+                break;
+            }
+            gif.totalTime+=frame.delayTime;
+        }
+        return gif;
+    }catch(err){throw err===abortSignal?abortSignal.reason:`error while parsing frame [${frameIndex}] "${err instanceof EvalError||err instanceof RangeError?err.message:"unknown error"}"`;}
 };
 /**
  * ## Extract the animation loop amount from a {@linkcode GIF}
@@ -601,6 +603,10 @@ const html=Object.freeze({
     override:Object.freeze({
         /** @type {HTMLInputElement} Button to `data-toggle` the visibility of the override menu (CSS) *///@ts-ignore element does exist in DOM
         menu:document.getElementById("overrideMenu"),
+        /** @type {HTMLInputElement} Checkbox to toggle using pre-rendered frames (disabled until first time {@linkcode html.override.framesRender}; clear when loading new GIF) → render every frame of that list by replace (copy transparancy) *///@ts-ignore element does exist in DOM
+        frames:document.getElementById("overrideFrames"),
+        /** @type {HTMLInputElement} Button to pre render frames (clear when loading new GIF) → `data-render` is `1` when frames are rendered at least once (`0` otherwise) *///@ts-ignore element does exist in DOM
+        framesRender:document.getElementById("overrideFramesRender"),
         /** @type {HTMLInputElement} Checkbox to toggle clearing after the last frame / before the first frame → ignore {@linkcode Frame.disposalMethod} and limit rendering start to frame 0 *///@ts-ignore element does exist in DOM
         clear:document.getElementById("overrideClear"),
         /** @type {HTMLInputElement} Checkbox to toggle background color transparent when restoring to background color ({@linkcode DisposalMethod.RestoreBackgroundColor}) → ignores {@linkcode Frame.transparentColorIndex} (not for text extension) *///@ts-ignore element does exist in DOM
@@ -688,7 +694,9 @@ const html=Object.freeze({
         /** @type {HTMLParagraphElement} Progress text over {@linkcode html.loading.frameProgress} (format: `Frame I | P%` with padding to minimize flickering) *///@ts-ignore element does exist in DOM
         frameText:document.getElementById("frameLoadText"),
         /** @type {HTMLProgressElement} Progress bar under {@linkcode html.loading.frameText} (0 to 1 - class `done` afterwards) *///@ts-ignore element does exist in DOM
-        frameProgress:document.getElementById("frameLoadProgress")
+        frameProgress:document.getElementById("frameLoadProgress"),
+        /** @type {HTMLInputElement} Button that aborts decoding and opens {@linkcode html.import.menu} again afterwards *///@ts-ignore element does exist in DOM
+        abort:document.getElementById("gifLoadAbort"),
     }),
     /** @type {HTMLInputElement} Button that opens the {@linkcode html.import.menu} (at the top of {@linkcode html.infoPanels}) *///@ts-ignore element does exist in DOM
     open:document.getElementById("open"),
@@ -763,7 +771,7 @@ const html=Object.freeze({
         localColorTable:document.getElementById("frameColorTable"),
         /**
          * Text information for this frame (only exist if a global color table is present)
-         * - characters other than `0x20` to `0xF7` are interpreted as `0x20`
+         * - characters other than `0x20` to `0xF7` are interpreted as `0x20` (space)
          * - each character is rendered seperatly (in one cell each)
          * - monospace font, size to cell height / width (measure font character w/h aspect and fit it to width if it's smaller)
          * - cells are tiled from tp left, to right, then bottom (fractional cells are skiped)
@@ -798,6 +806,8 @@ const html=Object.freeze({
             background:document.getElementById("frameTextCharBackground")
         })
     }),
+    /** @type {HTMLDivElement} Popup to show something has been copied to clipboard ({@linkcode copyToClipboard}) *///@ts-ignore element does exist in DOM
+    copyNote:document.getElementById("copyNote"),
     /** Import menu */
     import:Object.freeze({
         /** @type {HTMLDialogElement} The import menu element (use this to open or close dialog box) *///@ts-ignore element does exist in DOM
@@ -867,7 +877,7 @@ const confirmDialog=Object.seal(new class ConfirmDialog{
         ConfirmDialog._dialog_=dialog;
         ConfirmDialog._confirm_=confirm;
         ConfirmDialog._abort_=abort;
-        ConfirmDialog._dialog_.addEventListener("cancel",async ev=>{"use strict";ev.preventDefault();ConfirmDialog._abort_.click();},{passive:false});
+        ConfirmDialog._dialog_.addEventListener("cancel",async ev=>{ev.preventDefault();ConfirmDialog._abort_.click();},{passive:false});
         ConfirmDialog._confirm_.addEventListener("click",async()=>ConfirmDialog._exit_(false),{passive:true});
         ConfirmDialog._abort_.addEventListener("click",async()=>ConfirmDialog._exit_(true),{passive:true});
     }
@@ -876,7 +886,6 @@ const confirmDialog=Object.seal(new class ConfirmDialog{
      * @param {boolean} aborted - if the dialog was aborted (`true`) or confirmed (`false`)
      */
     static async _exit_(aborted){
-        "use strict";
         ConfirmDialog._dialog_.close();
         const call=ConfirmDialog._callback_;
         ConfirmDialog._callback_=null;
@@ -908,7 +917,7 @@ const confirmDialog=Object.seal(new class ConfirmDialog{
         if(force==null||!force){
             if(ConfirmDialog._running_)throw new Error("[ConfirmDialog:setup] a dialog is still pending");
         }else await ConfirmDialog._exit_(true);
-        ConfirmDialog._dialog_.removeEventListener("cancel",async ev=>{"use strict";ev.preventDefault();ConfirmDialog._abort_.click();});
+        ConfirmDialog._dialog_.removeEventListener("cancel",async ev=>{ev.preventDefault();ConfirmDialog._abort_.click();});
         ConfirmDialog._confirm_.removeEventListener("click",async()=>ConfirmDialog._exit_(false));
         ConfirmDialog._abort_.removeEventListener("click",async()=>ConfirmDialog._exit_(true));
     }
@@ -936,7 +945,6 @@ const confirmDialog=Object.seal(new class ConfirmDialog{
  * - if {@linkcode urlParam.pos} and {@linkcode urlParam.zoom} are given, apply {@linkcode urlParam.pos} before {@linkcode urlParam.zoom}
  */
 const urlParam=(()=>{
-    "use strict";
     const args=new URLSearchParams(window.location.search);
     let tmpNum=NaN,tmpStr="";
     return Object.freeze({
@@ -1024,13 +1032,13 @@ const global=Object.seal({
         /**
          * ## Add a new frame time to the list (converted to FPS and pre-calculate rounded sum of all stored FPS)
          * @param {number} ft - new frame time (time in milliseconds from last to current frame) to add to the list
-         * @returns {number} {@linkcode ft} (unchanged) for chaining
+         * @returns {number} - {@linkcode ft} (unchanged) for chaining
          */
         add(ft){
-            this._arr_[this._pos_=(this._pos_+1)%this._arr_.length]=0x3E8/ft;
-            if(this._len_<this._arr_.length)this._len_++;
+            this._arr_[this._pos_=(this._pos_+1)%this._arr_.length]=1000/ft;
+            if(this._len_<this._arr_.length)++this._len_;
             this._avg_=0;
-            for(let i=0;i<this._len_;i++)this._avg_+=this._arr_[i];
+            for(let i=0;i<this._len_;++i)this._avg_+=this._arr_[i];
             this._avg_=Math.round(this._avg_/this._arr_.length);
             return ft;
         }
@@ -1047,6 +1055,35 @@ const global=Object.seal({
     totalTime:0,
     /** @type {0|1|-1} `0` paused | `1` playing | `-1` reverse (also see {@linkcode html.controls.container} class) */
     playback:0,
+    /** manage {@linkcode html.override} */
+    override:new class{
+        /**
+         * ## Reset (turn off) all overrides
+         * call each time {@linkcode global.gifDecode} gets replaced
+         */
+        reset(){
+            html.override.frames.checked=false;
+            html.override.framesRender.dataset.render="0";
+            html.override.clear.checked=false;
+            html.override.background.checked=false;
+            html.override.text.checked=false;
+            html.override.render.checked=false;
+        }
+        /**
+         * ## Blocks overrides by disableing all interactible elements
+         * removes focus from currently focused element (if any) when {@linkcode state} is `true`
+         * @param {boolean} state - disables on `true` and re-enables on `false`
+         */
+        block(state){
+            // TODO change //! when implemented
+            html.override.frames.disabled=state||(html.override.framesRender.dataset.render==="0");//~ keep disabled if frames have not been rendered yet
+            html.override.framesRender.disabled=true||state;//! implement
+            html.override.clear.disabled=true||state;//! implement
+            html.override.background.disabled=true||state;//! implement
+            html.override.text.disabled=state;
+            html.override.render.disabled=true||state;//! implement
+        }
+    }(),
     /** @type {number} speed muliplier for {@linkcode global.playback} [`0` to `100`] (from {@linkcode html.speed}) */
     speed:1,
     /** if {@linkcode html.userInput.lock} is ON */
@@ -1081,6 +1118,7 @@ const global=Object.seal({
     panLeft:0,
     /** current (subpixel) offset frome the top for {@linkcode html.view.view} and {@linkcode html.frame.view} */
     panTop:0,
+    // TODO change that this is the correct scaler value → cw=gw*(e**((s=zoom)/100)) → cw=gw*(s=e**(zoom/100)) ~ zoom from controls and scaler is correct 2x when it's 2 in URL
     /** zooming for {@linkcode html.view.view} and {@linkcode html.frame.view} */
     scaler:0
 });
@@ -1100,19 +1138,44 @@ if((global.undisposedCanvas=global.undisposedCanvasObj.getContext("2d"))==null)t
 //~                      |___/
 
 /**
+ * ## Copy value to clipboard and show popup note
+ * @param {string} txt - text to copy to clipboard
+ */
+const copyToClipboard=txt=>{
+    COPY_NOTE_ANIMATION.cancel();
+    console.info("Copying: %o",txt);
+    if(typeof navigator.clipboard==="undefined"){
+        console.warn("Clipboard is not available");
+        html.copyNote.textContent="Clipboard is not available";
+        html.copyNote.dataset.state="f";
+        COPY_NOTE_ANIMATION.play();
+    }else navigator.clipboard.writeText(txt).then(
+        ()=>{
+            console.info("Successfully copied to clipboard");
+            html.copyNote.textContent="copied to clipboard";
+            html.copyNote.dataset.state="";
+            COPY_NOTE_ANIMATION.play();
+        },
+        err=>{
+            console.error("Could not copy to clipboard: %o",err);
+            html.copyNote.textContent="Could not copy to clipboard";
+            html.copyNote.dataset.state="f";
+            COPY_NOTE_ANIMATION.play();
+        }
+    );
+};
+
+/**
  * ## Imports a GIF automatically and renders the first frame (paused - without showing {@linkcode html.import.menu} except for errors)
  * _async function_
  * @param {string} url - a URL that leads to a GIF file
  * @returns {Promise<boolean>} `true` if the GIF was successfully loaded and the first frame was drawn and `false` otherwise (shows {@linkcode html.import.menu} for error feedback)
  */
 const silentImportGIF=async url=>{
-    "use strict";
     blockInput(true);
     if(await new Promise(E=>{
-        "use strict";
         /** @param {boolean} success */
         const R=success=>{
-            "use strict";
             html.root.removeEventListener("loadpreview",()=>R(true));
             html.root.removeEventListener("loadcancel",()=>R(false));
             E(success);
@@ -1122,10 +1185,8 @@ const silentImportGIF=async url=>{
         html.import.url.value=url;
         html.import.url.dispatchEvent(new InputEvent("change"));
     }))return await new Promise(E=>{
-        "use strict";
         /** @param {boolean} success */
         const R=success=>{
-            "use strict";
             html.root.removeEventListener("loadend",()=>R(true));
             html.root.removeEventListener("loaderror",()=>R(false));
             E(success);
@@ -1148,9 +1209,8 @@ const silentImportGIF=async url=>{
  * @param {MouseEvent} ev - `click` event
  */
 const copyHexColorToClipboard=function(ev){
-    "use strict";
     ev.preventDefault();
-    navigator.clipboard.writeText(this.value).catch(reason=>console.warn("Couldn't copy color %s, reason: %O",this.value,reason));
+    copyToClipboard(this.value);
 };
 
 /**
@@ -1161,7 +1221,6 @@ const copyHexColorToClipboard=function(ev){
  * @param {number} [top] - new top offset in pixel
  */
 const setCanvasOffset=(canvasStyle,left,top)=>{
-    "use strict";
     const width=Number.parseFloat(canvasStyle.width),
         height=Number.parseFloat(canvasStyle.height);
     html.root.style.setProperty("--offset-view-left",`${Math.trunc(global.panLeft=Math.max(width*-.5,Math.min(width*.5,left??global.panLeft)))}px`);
@@ -1180,7 +1239,7 @@ const blockInput=state=>{
     html.view.imgSmoothing.disabled=state;
     html.frameTime.frameRange.ariaDisabled=state?"true":null;
     html.frameTime.frameRange.tabIndex=state?-1:0;
-    html.override.menu.disabled=state;
+    global.override.block(state);
     html.controls.seekEnd.disabled=state;
     html.controls.seekPrevious.disabled=state;
     html.controls.reverse.disabled=state;
@@ -1205,7 +1264,6 @@ const blockInput=state=>{
  * @returns {string} the formatted number (only uppercase letters, if any) - if {@linkcode num} overflows into scientific notation, it does not format the number an returns it as is (applied fixed-point notation and uppercase)
  */
 const formatNumFixed=(num,fixed)=>{
-    "use strict";
     let n=num.toFixed(fixed??=0).toUpperCase();
     if(n.includes('E'))return n;
     const end=fixed>0?n.length-(fixed+1):n.length,
@@ -1222,7 +1280,6 @@ const formatNumFixed=(num,fixed)=>{
  * @example gcd(45, 100); //=> 5 → (45/5)/(100/5) → 9/20
  */
 const gcd=(a,b)=>{
-    "use strict";
     for([a,b]=a<b?[b,a]:[a,b];a%b>0;[a,b]=[b,a%b]);
     return b;
 };
@@ -1236,14 +1293,12 @@ const gcd=(a,b)=>{
  * @returns {[HTMLSpanElement]|HTMLLabelElement[]} the formatted list or a `<span>` representing an empty list
  */
 const genHTMLColorGrid=(colorTable,global,backgroundColorIndex,transparentColorIndex)=>{
-    "use strict";
     if(colorTable.length===0)return[Object.assign(document.createElement("span"),{textContent:`Empty list (see ${global?"loc":"glob"}al color table)`})];
     return colorTable.map((color,i)=>{
-        "use strict";
         const input=document.createElement("input"),
             label=document.createElement("label");
         input.type="color";
-        input.value=color.reduce((o,v)=>o+v.toString(0x10).toUpperCase().padStart(2,'0'),'#');
+        input.value=color.reduce((o,v)=>o+v.toString(16).toUpperCase().padStart(2,'0'),'#');
         input.addEventListener("click",copyHexColorToClipboard,{passive:false});
         label.title=`Color index ${i} - click to copy hex code`;
         if(i===backgroundColorIndex)label.classList.add("background-flag");
@@ -1258,10 +1313,8 @@ const genHTMLColorGrid=(colorTable,global,backgroundColorIndex,transparentColorI
  * @returns {[HTMLSpanElement]|HTMLFieldSetElement[]} the formatted list or a `<span>` representing an empty list
  */
 const genHTMLAppExtList=appExt=>{
-    "use strict";
     if(appExt.length===0)return[Object.assign(document.createElement("span"),{textContent:"Empty list"})];
     return appExt.map((ext,i)=>{
-        "use strict";
         const spanDesc=document.createElement("span"),
             input=document.createElement("input"),
             fieldset=document.createElement("fieldset");
@@ -1274,10 +1327,9 @@ const genHTMLAppExtList=appExt=>{
         input.title="Click to copy raw binary to clipboard";
         input.value="Copy raw binary";
         input.addEventListener("click",()=>{
-            "use strict";
-            //// const text=ext.data.reduce((o,v)=>o+v.toString(0x10).toUpperCase().padStart(2,'0'),"0x");
+            //// const text=ext.data.reduce((o,v)=>o+v.toString(16).toUpperCase().padStart(2,'0'),"0x");
             const text=ext.data.reduce((o,v)=>o+String.fromCharCode(v),"");
-            navigator.clipboard.writeText(text).catch(reason=>console.warn("Couldn't copy %s Bytes of text, reason: %O",formatNumFixed(text.length),reason));
+            copyToClipboard(text);
         },{passive:true});
         fieldset.append(
             Object.assign(document.createElement("legend"),{
@@ -1294,10 +1346,8 @@ const genHTMLAppExtList=appExt=>{
  * @returns {[HTMLSpanElement]|HTMLDivElement[]} the formatted list or a `<span>` representing an empty list
  */
 const genHTMLCommentList=comments=>{
-    "use strict";
     if(comments.length===0)return[Object.assign(document.createElement("span"),{textContent:"Empty list"})];
     return comments.map((comment,i)=>{
-        "use strict";
         const div=document.createElement("div");
         div.title=`Comment #${formatNumFixed(i)} found in GIF file at ${comment[0]}`;
         div.append(
@@ -1316,10 +1366,8 @@ const genHTMLCommentList=comments=>{
  * @returns {[HTMLSpanElement]|HTMLDivElement[]} the formatted list or a `<span>` representing an empty list
  */
 const getHTMLUnExtList=unExt=>{
-    "use strict";
     if(unExt.length===0)return[Object.assign(document.createElement("span"),{textContent:"Empty list"})];
     return unExt.map((ext,i)=>{
-        "use strict";
         const input=document.createElement("input"),
             span=document.createElement("span"),
             div=document.createElement("div");
@@ -1327,14 +1375,13 @@ const getHTMLUnExtList=unExt=>{
         input.title="Click to copy raw binary to clipboard";
         input.value="Copy raw binary";
         input.addEventListener("click",()=>{
-            "use strict";
-            //// const text=ext[1].reduce((o,v)=>o+v.toString(0x10).toUpperCase().padStart(2,'0'),"0x");
+            //// const text=ext[1].reduce((o,v)=>o+v.toString(16).toUpperCase().padStart(2,'0'),"0x");
             const text=ext[1].reduce((o,v)=>o+String.fromCharCode(v),"");
-            navigator.clipboard.writeText(text).catch(reason=>console.warn("Couldn't copy %s Bytes of text, reason: %O",formatNumFixed(text.length),reason));
+            copyToClipboard(text);
         },{passive:true});
         span.append(
             `#${formatNumFixed(i)} ${String.fromCharCode(ext[0])} `,
-            Object.assign(document.createElement("small"),{textContent:`(0x${ext[0].toString(0x10).toUpperCase().padStart(2,'0')})`})
+            Object.assign(document.createElement("small"),{textContent:`(0x${ext[0].toString(16).toUpperCase().padStart(2,'0')})`})
         );
         div.title="(Unknown) Extension identifier (1 character)";
         div.append(span,input);
@@ -1348,7 +1395,6 @@ const getHTMLUnExtList=unExt=>{
  * _uses {@linkcode global.gifDecode}, {@linkcode global.frameIndex}, {@linkcode global.time}, {@linkcode global.loops}, and {@linkcode global.loopCounter}_
  */
 const updateFrameInfoAndTimers=()=>{
-    "use strict";
     html.loop.loopText.textContent=global.loops===Infinity?"Infinite":(global.loops===0?"no":`${formatNumFixed(global.loopCounter)} of ${formatNumFixed(global.loops)}`);
     const f=global.gifDecode.frames[global.frameIndex];
     html.frameTime.timeRange.value=String(global.time);
@@ -1399,8 +1445,8 @@ const updateFrameInfoAndTimers=()=>{
         html.frame.text.grid.top.textContent=formatNumFixed(f.plainTextData.top);
         html.frame.text.cell.width.textContent=formatNumFixed(f.plainTextData.charWidth);
         html.frame.text.cell.height.textContent=formatNumFixed(f.plainTextData.charHeight);
-        html.frame.text.foreground.value=(f.localColorTable.length>f.plainTextData.foregroundColor?f.localColorTable:global.gifDecode.globalColorTable)[f.plainTextData.foregroundColor].reduce((o,v)=>o+v.toString(0x10).toUpperCase().padStart(2,'0'),"#");
-        html.frame.text.background.value=(f.localColorTable.length>f.plainTextData.backgroundColor?f.localColorTable:global.gifDecode.globalColorTable)[f.plainTextData.backgroundColor].reduce((o,v)=>o+v.toString(0x10).toUpperCase().padStart(2,'0'),"#");
+        html.frame.text.foreground.value=(f.localColorTable.length>f.plainTextData.foregroundColor?f.localColorTable:global.gifDecode.globalColorTable)[f.plainTextData.foregroundColor].reduce((o,v)=>o+v.toString(16).toUpperCase().padStart(2,'0'),"#");
+        html.frame.text.background.value=(f.localColorTable.length>f.plainTextData.backgroundColor?f.localColorTable:global.gifDecode.globalColorTable)[f.plainTextData.backgroundColor].reduce((o,v)=>o+v.toString(16).toUpperCase().padStart(2,'0'),"#");
         html.frame.text.foreground.classList.toggle("transparent-flag",f.plainTextData.foregroundColor===f.transparentColorIndex);
         html.frame.text.background.classList.toggle("transparent-flag",f.plainTextData.backgroundColor===f.transparentColorIndex);
     }
@@ -1411,7 +1457,6 @@ const updateFrameInfoAndTimers=()=>{
  * _uses {@linkcode global.gifDecode}, {@linkcode global.frameIndex}, and {@linkcode global.time}_
  */
 const updateTimeInfo=()=>{
-    "use strict";
     html.frameTime.timeRange.value=String(global.time);
     html.frameTime.frameRange.value=String(global.frameIndex);
     html.frameTime.time.textContent=formatNumFixed(global.time);
@@ -1435,6 +1480,7 @@ global.textCanvas.textAlign="left";//~ default "start"
 global.textCanvas.textBaseline="top";//~ default "alphabetic"
 
 html.import.preview.loading="eager";
+html.import.preview.crossOrigin="anonymous";
 
 html.root.style.setProperty("--offset-view-left","0px");
 html.root.style.setProperty("--offset-view-top","0px");
@@ -1449,6 +1495,13 @@ html.root.style.setProperty("--canvas-scaler","1.0");
 
 blockInput(true);
 
+/**animation for {@linkcode html.copyNote}*/
+const COPY_NOTE_ANIMATION=html.copyNote.animate(
+    {scale:["0","1","1","0"],bottom:["-2rem","0rem","0rem","-2rem"]},
+    {duration:1000,easing:"cubic-bezier(0,.9,.9,0)"}
+);
+COPY_NOTE_ANIMATION.finish();
+
 html.frame.text.foreground.addEventListener("click",copyHexColorToClipboard,{passive:false});
 html.frame.text.background.addEventListener("click",copyHexColorToClipboard,{passive:false});
 
@@ -1461,7 +1514,6 @@ html.frame.text.background.addEventListener("click",copyHexColorToClipboard,{pas
     html.frame.disposalMethod,
     html.frame.text.text
 ].forEach(resizeable=>resizeable.addEventListener("dblclick",ev=>{
-    "use strict";
     if(
         ev.button!==0
         ||ev.target!==resizeable
@@ -1471,9 +1523,6 @@ html.frame.text.background.addEventListener("click",copyHexColorToClipboard,{pas
     ev.preventDefault();
     resizeable.style.height="";
 },{passive:false}));
-
-// TODO remove when implemented ~ add URL parameters (clear and background are ON by default)
-html.override.clear.disabled=(html.override.background.disabled=(html.override.text.disabled=(html.override.render.disabled=true)));
 
 //~  _   _ _                                 _             _
 //~ | | | (_)                               | |           | |
@@ -1485,7 +1534,6 @@ html.override.clear.disabled=(html.override.background.disabled=(html.override.t
 //~ view buttons full-window mode / fit to window (or pan & zoom controls) / img smoothing
 
 html.view.fullWindow.addEventListener("click",()=>{
-    "use strict";
     if((html.view.fullWindow.dataset.toggle??"0")==="0"){
         html.view.fullWindow.dataset.toggle="1";
         html.view.fullWindow.value="🗙";
@@ -1499,7 +1547,6 @@ html.view.fullWindow.addEventListener("click",()=>{
     }
 },{passive:true});
 html.frame.fullWindow.addEventListener("click",()=>{
-    "use strict";
     if((html.frame.fullWindow.dataset.toggle??"0")==="0"){
         html.frame.fullWindow.dataset.toggle="1";
         html.frame.fullWindow.value="🗙";
@@ -1514,7 +1561,6 @@ html.frame.fullWindow.addEventListener("click",()=>{
 },{passive:true});
 
 html.view.fitWindow.addEventListener("click",()=>{
-    "use strict";
     if((html.view.fitWindow.dataset.toggle??"0")==="0"){
         html.view.fitWindow.dataset.toggle="1";
         html.view.fitWindow.value="🞑";
@@ -1529,7 +1575,6 @@ html.view.fitWindow.addEventListener("click",()=>{
     }
 },{passive:true});
 html.frame.fitWindow.addEventListener("click",()=>{
-    "use strict";
     if((html.frame.fitWindow.dataset.toggle??"0")==="0"){
         html.frame.fitWindow.dataset.toggle="1";
         html.frame.fitWindow.value="🞑";
@@ -1546,7 +1591,6 @@ html.frame.fitWindow.addEventListener("click",()=>{
 
 //~ canvas context2d imageSmoothingEnabled (true) and imageSmoothingQuality (low medium high) are only for drawn images that are distorted or scaled, but since here the GIF is rendered at native resolution (within the canvas) the only smooth/sharp that is possible is via CSS image-rendering
 html.view.imgSmoothing.addEventListener("click",()=>{
-    "use strict";
     if((html.view.imgSmoothing.dataset.toggle??"0")==="0"){
         html.view.imgSmoothing.dataset.toggle="1";
         html.view.imgSmoothing.value="🙼";
@@ -1558,7 +1602,6 @@ html.view.imgSmoothing.addEventListener("click",()=>{
     }
 },{passive:true});
 html.frame.imgSmoothing.addEventListener("click",()=>{
-    "use strict";
     if((html.frame.imgSmoothing.dataset.toggle??"0")==="0"){
         html.frame.imgSmoothing.dataset.toggle="1";
         html.frame.imgSmoothing.value="🙼";
@@ -1574,7 +1617,6 @@ html.frame.imgSmoothing.addEventListener("click",()=>{
 
 //~ dragging (drag-zoom with shift and move drag origin with ctrl + reset zoom with middle-mouse-button press)
 html.view.view.addEventListener("mousedown",ev=>{
-    "use strict";
     if(
         (html.view.fitWindow.dataset.toggle??"0")==="0"
         ||ev.target instanceof HTMLInputElement&&html.view.controls.contains(ev.target)
@@ -1593,7 +1635,6 @@ html.view.view.addEventListener("mousedown",ev=>{
     }
 },{passive:false});
 html.frame.view.addEventListener("mousedown",ev=>{
-    "use strict";
     if(
         (html.frame.fitWindow.dataset.toggle??"0")==="0"
         ||ev.target instanceof HTMLInputElement&&html.frame.controls.contains(ev.target)
@@ -1612,7 +1653,6 @@ html.frame.view.addEventListener("mousedown",ev=>{
     }
 },{passive:false});
 document.addEventListener("mousemove",ev=>{
-    "use strict";
     if(!global.dragging)return;
     if(ev.ctrlKey){
         global.mouseX=ev.clientX;
@@ -1623,7 +1663,7 @@ document.addEventListener("mousemove",ev=>{
     if(ev.shiftKey){
         const previousWidth=Number.parseFloat(canvasStyle.width),
             previousHeight=Number.parseFloat(canvasStyle.height);
-        html.root.style.setProperty("--canvas-scaler",String(Math.exp((global.scaler=Math.max(-0x1F4,Math.min(0x1F4,global.scaler-(ev.clientY-global.mouseY))))*.01)));
+        html.root.style.setProperty("--canvas-scaler",String(Math.exp((global.scaler=Math.max(-500,Math.min(500,global.scaler-(ev.clientY-global.mouseY))))*.01)));
         setCanvasOffset(
             canvasStyle,
             (Number.parseFloat(canvasStyle.width)*global.panLeft)/previousWidth,
@@ -1638,7 +1678,6 @@ document.addEventListener("mousemove",ev=>{
     global.mouseY=ev.clientY;
 },{passive:true});
 document.addEventListener("mouseup",()=>{
-    "use strict";
     if(!global.dragging)return;
     global.dragging=false;
     html.root.classList.remove("grabbing");
@@ -1646,7 +1685,6 @@ document.addEventListener("mouseup",()=>{
 
 //~ reset dragging (reset zoom with shift)
 html.view.view.addEventListener("dblclick",ev=>{
-    "use strict";
     if(
         (html.view.fitWindow.dataset.toggle??"0")==="0"
         ||ev.target instanceof HTMLInputElement&&html.view.controls.contains(ev.target)
@@ -1659,7 +1697,6 @@ html.view.view.addEventListener("dblclick",ev=>{
     ev.preventDefault();
 },{passive:false});
 html.frame.view.addEventListener("dblclick",ev=>{
-    "use strict";
     if(
         (html.frame.fitWindow.dataset.toggle??"0")==="0"
         ||ev.target instanceof HTMLInputElement&&html.frame.controls.contains(ev.target)
@@ -1674,7 +1711,6 @@ html.frame.view.addEventListener("dblclick",ev=>{
 
 //~ scroll-zoom
 html.view.view.addEventListener("wheel",ev=>{
-    "use strict";
     if(
         ev.ctrlKey
         ||(html.view.fitWindow.dataset.toggle??"0")==="0"
@@ -1682,7 +1718,7 @@ html.view.view.addEventListener("wheel",ev=>{
     )return;
     const previousWidth=Number.parseFloat(html.view.canvasStyle.width),
         previousHeight=Number.parseFloat(html.view.canvasStyle.height);
-    html.root.style.setProperty("--canvas-scaler",String(Math.exp((global.scaler=Math.max(-0x1F4,Math.min(0x1F4,global.scaler+(ev.deltaY*-(ev.shiftKey?.5:ev.altKey?.01:.1)))))*.01)));
+    html.root.style.setProperty("--canvas-scaler",String(Math.exp((global.scaler=Math.max(-500,Math.min(500,global.scaler+(ev.deltaY*-(ev.shiftKey?.5:ev.altKey?.01:.1)))))*.01)));
     setCanvasOffset(
         html.view.canvasStyle,
         (Number.parseFloat(html.view.canvasStyle.width)*global.panLeft)/previousWidth,
@@ -1691,7 +1727,6 @@ html.view.view.addEventListener("wheel",ev=>{
     ev.preventDefault();
 },{passive:false});
 html.frame.view.addEventListener("wheel",ev=>{
-    "use strict";
     if(
         ev.ctrlKey
         ||(html.frame.fitWindow.dataset.toggle??"0")==="0"
@@ -1699,7 +1734,7 @@ html.frame.view.addEventListener("wheel",ev=>{
     )return;
     const previousWidth=Number.parseFloat(html.frame.canvasStyle.width),
         previousHeight=Number.parseFloat(html.frame.canvasStyle.height);
-    html.root.style.setProperty("--canvas-scaler",String(Math.exp((global.scaler=Math.max(-0x1F4,Math.min(0x1F4,global.scaler+(ev.deltaY*-(ev.shiftKey?.5:ev.altKey?.01:.1)))))*.01)));
+    html.root.style.setProperty("--canvas-scaler",String(Math.exp((global.scaler=Math.max(-500,Math.min(500,global.scaler+(ev.deltaY*-(ev.shiftKey?.5:ev.altKey?.01:.1)))))*.01)));
     setCanvasOffset(
         html.frame.canvasStyle,
         (Number.parseFloat(html.frame.canvasStyle.width)*global.panLeft)/previousWidth,
@@ -1722,7 +1757,6 @@ html.open.addEventListener("click",()=>html.import.menu.showModal(),{passive:tru
 html.import.abort.addEventListener("click",()=>html.import.menu.close(),{passive:true});
 
 html.import.url.addEventListener("change",async()=>{
-    "use strict";
     html.import.file.value="";
     if((html.import.url.value=html.import.url.value.trim())===""){
         html.import.warn.textContent=(html.import.preview.src="");
@@ -1731,17 +1765,14 @@ html.import.url.addEventListener("change",async()=>{
         return;
     }
     const check=await(async url=>{
-        "use strict";
         if(url.startsWith("javascript:"))return null;
         if(url.startsWith("data:")){
             if(!url.startsWith("data:image/"))return null;
             if(!/^data:image\/gif[;,]/.test(url))return false;
         }
         return await new Promise(/**@param {(value:boolean|null)=>void} E*/E=>{
-            "use strict";
             /** @param {boolean} success */
             const R=success=>{
-                "use strict";
                 html.import.preview.removeEventListener("load",()=>R(true));
                 html.import.preview.removeEventListener("error",()=>R(false));
                 E(success?true:null);
@@ -1750,15 +1781,12 @@ html.import.url.addEventListener("change",async()=>{
             html.import.preview.addEventListener("error",()=>R(false),{passive:true,once:true});
             html.import.preview.src=url;
         });
-        //! can't check MIME-type with HEAD-fetch due to CORS (some servers also don't allow HEAD-fetch for images)
-        //! ~let `decodeGIF` figure out if this is a GIF file (or the GET request still results in a "fetch error")
     })(html.import.url.value);
     if(!(check??false))html.import.preview.src="";
     html.import.warn.textContent=check==null?"Given URL does not lead to an image":(check?"":"Given URL does not lead to a GIF image");
     html.root.dispatchEvent(new CustomEvent((html.import.confirm.disabled=!(check??false))?"loadcancel":"loadpreview"));
 },{passive:true});
 html.import.file.addEventListener("change",async()=>{
-    "use strict";
     html.import.url.value="";
     html.import.preview.src="";
     html.import.confirm.disabled=true;
@@ -1792,7 +1820,6 @@ html.import.file.addEventListener("change",async()=>{
 // FAV load & decode GIF (log fetch progress & show visual decoding progress), update/reset variables/UI, and render first frame (paused) or open inport menu for error feedback
 
 html.import.confirm.addEventListener("click",async()=>{
-    "use strict";
     const fileSrc=html.import.preview.src,
         fileName=(html.import.file.files?.length??0)>0?html.import.file.files?.[0]?.name:html.import.url.value.match(/^[^#?]*?\/?([^/]+\.gif)(?:[#?]|$)/i)?.[1];
     html.import.menu.close();
@@ -1811,26 +1838,22 @@ html.import.confirm.addEventListener("click",async()=>{
     html.loading.frameProgress.removeAttribute("value");
     html.loading.gifText.textContent="Loading...";
     html.loading.frameText.textContent="Loading...";
+    const controller=new AbortController();
+    html.loading.abort.addEventListener("click",()=>controller.abort("aborted by user"),{passive:true,once:true,signal:controller.signal});
     await new Promise(E=>setTimeout(E,0));
     html.root.dispatchEvent(new CustomEvent("loadstart"));
     decodeGIF(
         fileSrc,
-        undefined,
-        (loaded,total)=>{
-            "use strict";
-            if(total==null)console.log(`%cFetching GIF: %s bytes loaded`,"background-color:#000;color:#0A0;",formatNumFixed(loaded));
-            else console.log(`%cFetching GIF: %s of %s bytes loaded (%s %%)`,"background-color:#000;color:#0A0;",formatNumFixed(loaded),formatNumFixed(total),formatNumFixed(loaded*0x64/total,2));
-        },
-        byteSize=>byteSize<0xA00000?true:new Promise(resolve=>confirmDialog.Setup("Loaded file is 10MiB or large, continue processing?",aborted=>resolve(!aborted))),
+        controller.signal,
+        byteSize=>byteSize<10e6?true:new Promise(resolve=>confirmDialog.Setup("GIF is ≥ 10MB!\n(parsing may take very long)\ncontinue anyway?",aborted=>resolve(!aborted))),
         (percentageRead,frameIndex,frame,framePos,gifSize)=>{
-            "use strict";
             if(frameIndex===0){//~ only on first call
                 html.frame.htmlCanvas.width=(html.view.htmlCanvas.width=gifSize[0]);
                 html.frame.htmlCanvas.height=(html.view.htmlCanvas.height=gifSize[1]);
                 //~ canvases are cleared automatically when their size is set
             }
             html.loading.gifProgress.value=(html.loading.frameProgress.value=percentageRead);
-            html.loading.gifText.textContent=(html.loading.frameText.textContent=`Frame ${formatNumFixed(frameIndex+1)} | ${formatNumFixed(percentageRead*0x64,2)}%`);
+            html.loading.gifText.textContent=(html.loading.frameText.textContent=`Frame ${formatNumFixed(frameIndex+1)} | ${formatNumFixed(percentageRead*100,2)}%`);
             html.view.canvas.clearRect(0,0,html.view.htmlCanvas.width,html.view.htmlCanvas.height);
             html.view.canvas.putImageData(frame,...framePos);
             if(html.details.frameView.open){
@@ -1841,8 +1864,8 @@ html.import.confirm.addEventListener("click",async()=>{
             return new Promise(E=>setTimeout(E,0));
         }
     ).then(gif=>{
-        "use strict";
         //~ reset variables and UI
+        global.override.reset();
         html.loop.toggle.disabled=(global.loops=getGIFLoopAmount(global.gifDecode=gif))===Infinity;
         global.loopCounter=(global.time=(global.frameIndex=(global.frameIndexLast=0)));
         global.loopEnd=true;
@@ -1857,7 +1880,7 @@ html.import.confirm.addEventListener("click",async()=>{
         html.info.totalTime.textContent=gif.totalTime===Infinity?"Infinity (waits for user input)":`${formatNumFixed(gif.totalTime)} ms`;
         if(gif.pixelAspectRatio===0||gif.pixelAspectRatio===1)html.info.pixelAspectRatio.textContent="1:1 (square pixels)";
         else{
-            const fracGCD=0x40/gcd(gif.pixelAspectRatio*0x40,0x40);
+            const fracGCD=64/gcd(gif.pixelAspectRatio*64,64);
             html.info.pixelAspectRatio.textContent=`${gif.pixelAspectRatio*fracGCD}:${fracGCD} (${gif.pixelAspectRatio}:1)`;
         }
         html.info.colorRes.textContent=`${gif.colorRes} bits`;
@@ -1904,23 +1927,22 @@ html.import.confirm.addEventListener("click",async()=>{
                 cols=Math.trunc(f.plainTextData.width/f.plainTextData.charWidth),
                 rows=Math.trunc(f.plainTextData.height/f.plainTextData.charHeight),
                 txt=f.plainTextData.text.replace(/[^\x20-\xF7]/g,' ');//~ only allow ASCII charaters between 0x20 and 0xF7
-            //@ts-ignore letterSpacing does indeed exist as a property of CanvasRenderingContext2D (of which OffscreenCanvasRenderingContext2D is based on)
             global.textCanvas.letterSpacing=`${f.plainTextData.charWidth-width}px`;
             //~ draw background box
             if(f.transparentColorIndex!==f.plainTextData.backgroundColor){
-                global.textCanvas.fillStyle=gif.globalColorTable[f.plainTextData.backgroundColor].reduce((o,v)=>o+v.toString(0x10).padStart(2,'0'),'#');
+                global.textCanvas.fillStyle=gif.globalColorTable[f.plainTextData.backgroundColor].reduce((o,v)=>o+v.toString(16).padStart(2,'0'),'#');
                 global.textCanvas.fillRect(0,0,global.textCanvasObj.width,global.textCanvasObj.height);
             }else global.textCanvas.clearRect(0,0,global.textCanvasObj.width,global.textCanvasObj.height);
             //~ draw/cutout text
             if(f.transparentColorIndex===f.plainTextData.foregroundColor){
                 if(f.transparentColorIndex!==f.plainTextData.backgroundColor){
                     global.textCanvas.globalCompositeOperation="destination-out";
-                    for(let r=0;r<rows;r++)global.textCanvas.fillText(txt.substring(cols*r,cols*(r+2)),0,f.plainTextData.charHeight*r);
+                    for(let r=0;r<rows;++r)global.textCanvas.fillText(txt.substring(cols*r,cols*(r+2)),0,f.plainTextData.charHeight*r);
                     global.textCanvas.globalCompositeOperation="source-over";
                 }
             }else{
-                global.textCanvas.fillStyle=gif.globalColorTable[f.plainTextData.foregroundColor].reduce((o,v)=>o+v.toString(0x10).padStart(2,'0'),'#');
-                for(let r=0;r<rows;r++)global.textCanvas.fillText(txt.substring(cols*r,cols*(r+2)),0,f.plainTextData.charHeight*r);
+                global.textCanvas.fillStyle=gif.globalColorTable[f.plainTextData.foregroundColor].reduce((o,v)=>o+v.toString(16).padStart(2,'0'),'#');
+                for(let r=0;r<rows;++r)global.textCanvas.fillText(txt.substring(cols*r,cols*(r+2)),0,f.plainTextData.charHeight*r);
             }
             //~ apply/draw to GIF canvas
             html.view.canvas.drawImage(global.textCanvasObj,f.plainTextData.left,f.plainTextData.top);
@@ -1930,15 +1952,19 @@ html.import.confirm.addEventListener("click",async()=>{
         html.controls.pause.focus();
         html.root.dispatchEvent(new CustomEvent("loadend"));
     },reason=>{
-        "use strict";
         html.import.warn.textContent=reason;
         html.import.menu.showModal();
         html.loading.gif.classList.add("done");
         html.loading.frame.classList.add("done");
-        if(global.gifDecode==null)html.open.disabled=false;
-        else{
+        if(global.gifDecode==null){
+            html.frame.htmlCanvas.width=(html.view.htmlCanvas.width=100);
+            html.frame.htmlCanvas.height=(html.view.htmlCanvas.height=100);
+            //~ canvases are cleared automatically when their size is set
+            html.open.disabled=false;
+        }else{
             html.frame.htmlCanvas.width=(html.view.htmlCanvas.width=global.gifDecode.width);
             html.frame.htmlCanvas.height=(html.view.htmlCanvas.height=global.gifDecode.height);
+            //~ canvases are cleared automatically when their size is set
             html.frameTime.frameRange.value=String(global.frameIndexLast=(global.frameIndex=0));
             html.frameTime.frameRange.dispatchEvent(new InputEvent("input"));
             blockInput(false);
@@ -1958,7 +1984,6 @@ html.import.confirm.addEventListener("click",async()=>{
 //~                |___/
 
 html.frameTime.frameRange.addEventListener("input",()=>{
-    "use strict";
     if(global.playback!==0)html.controls.pause.click();
     html.frameTime.timeRange.value=String(global.time=global.frameStarts[global.frameIndex=Number(html.frameTime.frameRange.value)]);
     html.frameTime.frame.textContent=formatNumFixed(global.frameIndex);
@@ -1966,12 +1991,10 @@ html.frameTime.frameRange.addEventListener("input",()=>{
 },{passive:true});
 
 html.override.menu.addEventListener("click",()=>{
-    "use strict";
     html.override.menu.dataset.toggle=html.override.menu.dataset.toggle==="1"?"0":"1";
 },{passive:true});
 
 html.controls.seekStart.addEventListener("click",()=>{
-    "use strict";
     if(global.playback!==0)html.controls.pause.click();
     if(!global.loopForce&&Number.isFinite(global.loops))global.loopCounter=0;
     html.frameTime.frameRange.value=String(global.frameIndex=0);
@@ -1980,7 +2003,6 @@ html.controls.seekStart.addEventListener("click",()=>{
     html.frameTime.time.textContent=formatNumFixed(global.time);
 },{passive:true});
 html.controls.seekEnd.addEventListener("click",()=>{
-    "use strict";
     if(global.playback!==0)html.controls.pause.click();
     if(!global.loopForce&&Number.isFinite(global.loops))global.loopCounter=global.loops;
     html.frameTime.frameRange.value=String(global.frameIndex=global.gifDecode.frames.length-1);
@@ -1990,7 +2012,6 @@ html.controls.seekEnd.addEventListener("click",()=>{
 },{passive:true});
 
 html.controls.seekNext.addEventListener("click",()=>{
-    "use strict";
     if(global.playback!==0)html.controls.pause.click();
     if(++global.frameIndex>=global.gifDecode.frames.length){
         global.frameIndex=0;
@@ -2002,7 +2023,6 @@ html.controls.seekNext.addEventListener("click",()=>{
     html.frameTime.time.textContent=formatNumFixed(global.time);
 },{passive:true});
 html.controls.seekPrevious.addEventListener("click",()=>{
-    "use strict";
     if(global.playback!==0)html.controls.pause.click();
     if(--global.frameIndex<0){
         global.frameIndex=global.gifDecode.frames.length-1;
@@ -2015,33 +2035,27 @@ html.controls.seekPrevious.addEventListener("click",()=>{
 },{passive:true});
 
 html.controls.pause.addEventListener("click",()=>{
-    "use strict";
     html.controls.container.classList.value="paused";
     global.playback=0;
 },{passive:true});
 html.controls.play.addEventListener("click",()=>{
-    "use strict";
     html.controls.container.classList.value="playing";
     global.playback=1;
 },{passive:true});
 html.controls.reverse.addEventListener("click",()=>{
-    "use strict";
     html.controls.container.classList.value="reverse";
     global.playback=-1;
 },{passive:true});
 
 html.speed.addEventListener("input",()=>{
-    "use strict";
     let num=Number.parseFloat(html.speed.value);
     if(Number.isNaN(num))num=1;
     html.speed.classList.toggle("stop",(global.speed=Math.min(100,Math.max(0,num)))===0);
 },{passive:true});
 html.speed.addEventListener("change",()=>{
-    "use strict";
     html.speed.classList.toggle("stop",(html.speed.value=String(global.speed))==="0");
 },{passive:true});
 html.speed.addEventListener("keydown",ev=>{
-    "use strict";
     const dir=ev.key==="ArrowUp"?1:ev.key==="ArrowDown"?-1:0;
     if(dir===0)return;
     const dot=html.speed.value.indexOf(".");
@@ -2057,7 +2071,6 @@ html.speed.addEventListener("keydown",ev=>{
 },{passive:false});
 
 html.userInput.lock.addEventListener("click",()=>{
-    "use strict";
     if((html.userInput.lock.dataset.toggle??"0")==="0"){
         html.userInput.lock.dataset.toggle="1";
         html.userInput.input.disabled=(global.userInputLock=true);
@@ -2073,8 +2086,24 @@ html.userInput.input.addEventListener("click",()=>{
 },{passive:true});
 
 html.loop.toggle.addEventListener("click",()=>{
-    "use strict";
     html.loop.toggle.dataset.toggle=(global.loopForce=!global.loopForce)?"1":"0";
+},{passive:true});
+
+//~ ______          ______               _            ______
+//~ | ___ \         | ___ \             | |           |  ___|
+//~ | |_/ / __ ___  | |_/ /___ _ __   __| | ___ _ __  | |_ _ __ __ _ _ __ ___   ___  ___
+//~ |  __/ '__/ _ \ |    // _ \ '_ \ / _` |/ _ \ '__| |  _| '__/ _` | '_ ` _ \ / _ \/ __|
+//~ | |  | | |  __/ | |\ \  __/ | | | (_| |  __/ |    | | | | | (_| | | | | | |  __/\__ \
+//~ \_|  |_|  \___| \_| \_\___|_| |_|\__,_|\___|_|    \_| |_|  \__,_|_| |_| |_|\___||___/
+
+html.override.framesRender.addEventListener("click",()=>{
+    blockInput(true);
+    // TODO render and stores all frames from second loop (if more than one loop exist) ~ show loading bar and make process abortable
+    // ...
+    html.override.framesRender.dataset.render="1";
+    html.override.clear.dataset.render=html.override.clear.checked?"1":"0";
+    html.override.background.dataset.render=html.override.background.checked?"1":"0";
+    blockInput(false);
 },{passive:true});
 
 //~  _____ ___________                      _
@@ -2086,7 +2115,6 @@ html.loop.toggle.addEventListener("click",()=>{
 
 //~ load URL parameters
 (async()=>{
-    "use strict";
     //~ wait for one cycle
     await new Promise(E=>setTimeout(E,0));
     html.details.gifInfo.toggleAttribute("open",urlParam.gifInfo);
@@ -2130,7 +2158,7 @@ html.loop.toggle.addEventListener("click",()=>{
         if(urlParam.zoom!==0){
             const previousWidth=Number.parseFloat(canvasStyle.width),
                 previousHeight=Number.parseFloat(canvasStyle.height);
-            html.root.style.setProperty("--canvas-scaler",String(Math.exp((global.scaler=Math.max(-0x1F4,Math.min(0x1F4,urlParam.zoom)))*.01)));
+            html.root.style.setProperty("--canvas-scaler",String(Math.exp((global.scaler=Math.max(-500,Math.min(500,urlParam.zoom)))*.01)));
             //~ wait for one cycle
             await new Promise(E=>setTimeout(E,0));
             setCanvasOffset(
@@ -2147,7 +2175,6 @@ html.loop.toggle.addEventListener("click",()=>{
 
 //~ animation loop
 global.animationFrame=window.requestAnimationFrame(async function loop(time){
-    "use strict";
     if(time===global.lastAnimationFrameTime){
         global.animationFrame=window.requestAnimationFrame(loop);
         return;
@@ -2238,6 +2265,7 @@ global.animationFrame=window.requestAnimationFrame(async function loop(time){
         }while(true);
     }while(false);else global.loopEnd=!global.loopForce&&Number.isFinite(global.loops)&&((global.frameIndex===0&&global.loopCounter===0)||(global.frameIndex===global.gifDecode.frames.length-1&&global.loopCounter===global.loops));
     global.skipFrame=NaN;
+    //~ frameIndex and frameIndexLast will both be 0 if no GIF is loaded
     await Promise.resolve();
     //~ render frame and update time
     if(global.frameIndex!==global.frameIndexLast){
@@ -2269,7 +2297,7 @@ global.animationFrame=window.requestAnimationFrame(async function loop(time){
                 }else{
                     //~ set opaque pixels in undisposed canvas to background color and add resulting image to GIF canvas
                     global.undisposedCanvas.globalCompositeOperation="source-in";
-                    global.undisposedCanvas.fillStyle=(f.localColorTable.length!==0?f.localColorTable:global.gifDecode.globalColorTable)[bgColorIndex].reduce((o,v)=>o+v.toString(0x10).padStart(2,'0'),'#');
+                    global.undisposedCanvas.fillStyle=(f.localColorTable.length!==0?f.localColorTable:global.gifDecode.globalColorTable)[bgColorIndex].reduce((o,v)=>o+v.toString(16).padStart(2,'0'),'#');
                     global.undisposedCanvas.fillRect(0,0,f.width,f.height);
                     global.undisposedCanvas.globalCompositeOperation="copy";
                     html.view.canvas.drawImage(global.undisposedCanvasObj,...global.undisposedPos);
@@ -2283,6 +2311,7 @@ global.animationFrame=window.requestAnimationFrame(async function loop(time){
             break;
         }
         //~ render from (frameIndexLast +1) to (frameIndex -1)
+        // TODO if frames are prerendered via override use them instead
         for(
             let i=global.frameIndexLast+1>=global.gifDecode.frames.length?0:global.frameIndexLast+1;
             global.frameIndexLast<global.frameIndex?i<global.frameIndex:(i>global.frameIndexLast||i<global.frameIndex);
@@ -2299,7 +2328,7 @@ global.animationFrame=window.requestAnimationFrame(async function loop(time){
                 html.frame.canvas.putImageData(f.image,f.left,f.top);
                 html.view.canvas.drawImage(html.frame.htmlCanvas,f.left,f.top,f.width,f.height,f.left,f.top,f.width,f.height);
                 //~ render text extension
-                if(f.plainTextData!=null){
+                if(f.plainTextData!=null&&!html.override.text.checked){
                     global.textCanvasObj.width=f.plainTextData.width;
                     global.textCanvasObj.height=f.plainTextData.height;
                     global.textCanvas.font=`${f.plainTextData.charHeight}px "consolas", monospace`;
@@ -2307,23 +2336,22 @@ global.animationFrame=window.requestAnimationFrame(async function loop(time){
                         cols=Math.trunc(f.plainTextData.width/f.plainTextData.charWidth),
                         rows=Math.trunc(f.plainTextData.height/f.plainTextData.charHeight),
                         txt=f.plainTextData.text.replace(/[^\x20-\xF7]/g,' ');//~ only allow ASCII charaters between 0x20 and 0xF7
-                    //@ts-ignore letterSpacing does indeed exist as a property of CanvasRenderingContext2D (of which OffscreenCanvasRenderingContext2D is based on)
                     global.textCanvas.letterSpacing=`${f.plainTextData.charWidth-width}px`;
                     //~ draw background box
                     if(f.transparentColorIndex!==f.plainTextData.backgroundColor){
-                        global.textCanvas.fillStyle=global.gifDecode.globalColorTable[f.plainTextData.backgroundColor].reduce((o,v)=>o+v.toString(0x10).padStart(2,'0'),'#');
+                        global.textCanvas.fillStyle=global.gifDecode.globalColorTable[f.plainTextData.backgroundColor].reduce((o,v)=>o+v.toString(16).padStart(2,'0'),'#');
                         global.textCanvas.fillRect(0,0,global.textCanvasObj.width,global.textCanvasObj.height);
                     }else global.textCanvas.clearRect(0,0,global.textCanvasObj.width,global.textCanvasObj.height);
                     //~ draw/cutout text
                     if(f.transparentColorIndex===f.plainTextData.foregroundColor){
                         if(f.transparentColorIndex!==f.plainTextData.backgroundColor){
                             global.textCanvas.globalCompositeOperation="destination-out";
-                            for(let r=0;r<rows;r++)global.textCanvas.fillText(txt.substring(cols*r,cols*(r+2)),0,f.plainTextData.charHeight*r);
+                            for(let r=0;r<rows;++r)global.textCanvas.fillText(txt.substring(cols*r,cols*(r+2)),0,f.plainTextData.charHeight*r);
                             global.textCanvas.globalCompositeOperation="source-over";
                         }
                     }else{
-                        global.textCanvas.fillStyle=global.gifDecode.globalColorTable[f.plainTextData.foregroundColor].reduce((o,v)=>o+v.toString(0x10).padStart(2,'0'),'#');
-                        for(let r=0;r<rows;r++)global.textCanvas.fillText(txt.substring(cols*r,cols*(r+2)),0,f.plainTextData.charHeight*r);
+                        global.textCanvas.fillStyle=global.gifDecode.globalColorTable[f.plainTextData.foregroundColor].reduce((o,v)=>o+v.toString(16).padStart(2,'0'),'#');
+                        for(let r=0;r<rows;++r)global.textCanvas.fillText(txt.substring(cols*r,cols*(r+2)),0,f.plainTextData.charHeight*r);
                     }
                     //~ apply/draw to GIF canvas
                     html.view.canvas.drawImage(global.textCanvasObj,f.plainTextData.left,f.plainTextData.top);
@@ -2353,7 +2381,7 @@ global.animationFrame=window.requestAnimationFrame(async function loop(time){
                 }else{
                     //~ set opaque pixels in undisposed canvas to background color and add resulting image to GIF canvas
                     global.undisposedCanvas.globalCompositeOperation="source-in";
-                    global.undisposedCanvas.fillStyle=(f.localColorTable.length!==0?f.localColorTable:global.gifDecode.globalColorTable)[bgColorIndex].reduce((o,v)=>o+v.toString(0x10).padStart(2,'0'),'#');
+                    global.undisposedCanvas.fillStyle=(f.localColorTable.length!==0?f.localColorTable:global.gifDecode.globalColorTable)[bgColorIndex].reduce((o,v)=>o+v.toString(16).padStart(2,'0'),'#');
                     global.undisposedCanvas.fillRect(0,0,f.width,f.height);
                     global.undisposedCanvas.globalCompositeOperation="copy";
                     html.view.canvas.drawImage(global.undisposedCanvasObj,...global.undisposedPos);
@@ -2388,7 +2416,7 @@ global.animationFrame=window.requestAnimationFrame(async function loop(time){
         html.frame.canvas.putImageData(f.image,f.left,f.top);
         html.view.canvas.drawImage(html.frame.htmlCanvas,f.left,f.top,f.width,f.height,f.left,f.top,f.width,f.height);
         //~ render text extension
-        if(f.plainTextData!=null){
+        if(f.plainTextData!=null&&!html.override.text.checked){
             global.textCanvasObj.width=f.plainTextData.width;
             global.textCanvasObj.height=f.plainTextData.height;
             global.textCanvas.font=`${f.plainTextData.charHeight}px "consolas", monospace`;
@@ -2396,23 +2424,22 @@ global.animationFrame=window.requestAnimationFrame(async function loop(time){
                 cols=Math.trunc(f.plainTextData.width/f.plainTextData.charWidth),
                 rows=Math.trunc(f.plainTextData.height/f.plainTextData.charHeight),
                 txt=f.plainTextData.text.replace(/[^\x20-\xF7]/g,' ');//~ only allow ASCII charaters between 0x20 and 0xF7
-            //@ts-ignore letterSpacing does indeed exist as a property of CanvasRenderingContext2D (of which OffscreenCanvasRenderingContext2D is based on)
             global.textCanvas.letterSpacing=`${f.plainTextData.charWidth-width}px`;
             //~ draw background box
             if(f.transparentColorIndex!==f.plainTextData.backgroundColor){
-                global.textCanvas.fillStyle=global.gifDecode.globalColorTable[f.plainTextData.backgroundColor].reduce((o,v)=>o+v.toString(0x10).padStart(2,'0'),'#');
+                global.textCanvas.fillStyle=global.gifDecode.globalColorTable[f.plainTextData.backgroundColor].reduce((o,v)=>o+v.toString(16).padStart(2,'0'),'#');
                 global.textCanvas.fillRect(0,0,global.textCanvasObj.width,global.textCanvasObj.height);
             }else global.textCanvas.clearRect(0,0,global.textCanvasObj.width,global.textCanvasObj.height);
             //~ draw/cutout text
             if(f.transparentColorIndex===f.plainTextData.foregroundColor){
                 if(f.transparentColorIndex!==f.plainTextData.backgroundColor){
                     global.textCanvas.globalCompositeOperation="destination-out";
-                    for(let r=0;r<rows;r++)global.textCanvas.fillText(txt.substring(cols*r,cols*(r+2)),0,f.plainTextData.charHeight*r);
+                    for(let r=0;r<rows;++r)global.textCanvas.fillText(txt.substring(cols*r,cols*(r+2)),0,f.plainTextData.charHeight*r);
                     global.textCanvas.globalCompositeOperation="source-over";
                 }
             }else{
-                global.textCanvas.fillStyle=global.gifDecode.globalColorTable[f.plainTextData.foregroundColor].reduce((o,v)=>o+v.toString(0x10).padStart(2,'0'),'#');
-                for(let r=0;r<rows;r++)global.textCanvas.fillText(txt.substring(cols*r,cols*(r+2)),0,f.plainTextData.charHeight*r);
+                global.textCanvas.fillStyle=global.gifDecode.globalColorTable[f.plainTextData.foregroundColor].reduce((o,v)=>o+v.toString(16).padStart(2,'0'),'#');
+                for(let r=0;r<rows;++r)global.textCanvas.fillText(txt.substring(cols*r,cols*(r+2)),0,f.plainTextData.charHeight*r);
             }
             //~ apply/draw to GIF canvas
             html.view.canvas.drawImage(global.textCanvasObj,f.plainTextData.left,f.plainTextData.top);

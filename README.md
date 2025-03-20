@@ -24,13 +24,11 @@ Also, see the [specs for GIF89a](https://www.w3.org/Graphics/GIF/spec-gif89a.txt
 
 URL parameters can be in any order, starting with `?` after the URL and then parameters in the format `NAME=VALUE` with `&` between each parameter.
 
->
 > [!NOTE]
 >
 > Values must be [encoded URI components](https://developer.mozilla.org/en-US/docs/Web/JavaScript/Reference/Global_Objects/encodeURIComponent "MDN: JS encodeURIComponent() function").
 >
 > Parameters with values `0`/`1` can omit the `=VALUE` for it to be treated as `1`.
->
 
 For example `?url=https%3A%2F%2Fexample.com%2Fexample.gif&gifInfo=0&frameInfo` translates to:
 
@@ -42,32 +40,35 @@ For example `?url=https%3A%2F%2Fexample.com%2Fexample.gif&gifInfo=0&frameInfo` t
 
 <details open><summary>Click to toggle table</summary>
 
-| Name               | Possible values                                                                  | Description                                                                                                                             | Default value                                                                                                                                                                                                                                             |
-| ------------------ | -------------------------------------------------------------------------------- | --------------------------------------------------------------------------------------------------------------------------------------- | --------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| `url`              | a GIF file URL                                                                   | GIF URL to load                                                                                                                         | [This public domain GIF from Wikimedia<br><img height="68.5" alt="Wax_fire.gif" src="https://upload.wikimedia.org/wikipedia/commons/a/a2/Wax_fire.gif">](https://commons.wikimedia.org/wiki/File:Wax_fire.gif "Open file info page on Wikimedia Commons") |
-| `gifInfo`          | `0` collapsed / `1` expanded                                                     | If the _GIF info_ section should be expanded                                                                                            | `1` (expanded)                                                                                                                                                                                                                                            |
-| `globalColorTable` | `0` collapsed / `1` expanded                                                     | If the _Global color table_ section should be expanded                                                                                  | `1` (expanded)                                                                                                                                                                                                                                            |
-| `appExtList`       | `0` collapsed / `1` expanded                                                     | If the _Application-Extensions_ section should be expanded                                                                              | `1` (expanded)                                                                                                                                                                                                                                            |
-| `commentsList`     | `0` collapsed / `1` expanded                                                     | If the _Comments_ section should be expanded                                                                                            | `0` (collapsed)                                                                                                                                                                                                                                           |
-| `unExtList`        | `0` collapsed / `1` expanded                                                     | If the _Unknown extensions_ section should be expanded                                                                                  | `0` (collapsed)                                                                                                                                                                                                                                           |
-| `frameView`        | `0` collapsed / `1` expanded                                                     | If the _frame canvas_ section should be expanded                                                                                        | `0` (collapsed)                                                                                                                                                                                                                                           |
-| `frameInfo`        | `0` collapsed / `1` expanded                                                     | If the _Frame info_ section should be expanded                                                                                          | `0` (collapsed)                                                                                                                                                                                                                                           |
-| `localColorTable`  | `0` collapsed / `1` expanded                                                     | If the _local color table_ section should be expanded                                                                                   | `1` (expanded)                                                                                                                                                                                                                                            |
-| `frameText`        | `0` collapsed / `1` expanded                                                     | If the (Frame) _Text_ section should be expanded                                                                                        | `0` (collapsed)                                                                                                                                                                                                                                           |
-| `import`           | `0` closed / `1` open                                                            | If the import menu should be opened                                                                                                     | `0` (closed)                                                                                                                                                                                                                                              |
-| `play`             | float between `-100` and `100`<br>`<0` reversed / `>0` (or empty) forwards       | If the GIF should be playing, how fast, and in what direction                                                                           | `0` (paused)                                                                                                                                                                                                                                              |
-| `f`                | zero-based frame index (positive integer)<br>_if out of bounds uses first frame_ | Start at a specific frame                                                                                                               | `0` (first frame)                                                                                                                                                                                                                                         |
-| `userLock`         | `0` OFF / `1` ON                                                                 | If the _user input lock_ button should be toggled on                                                                                    | `0` (OFF)                                                                                                                                                                                                                                                 |
-| `gifFull`          | `0` OFF / `1` ON                                                                 | If the GIF _full window_ button should be toggled on                                                                                    | `0` (OFF)                                                                                                                                                                                                                                                 |
-| `gifReal`          | `0` OFF / `1` ON                                                                 | If the GIF _fit window_ button should be toggled on                                                                                     | `0` (OFF)                                                                                                                                                                                                                                                 |
-| `gifSmooth`        | `0` OFF / `1` ON                                                                 | If the GIF _img smoothing_ should be toggled on                                                                                         | `0` (OFF)                                                                                                                                                                                                                                                 |
-| `frameFull`        | `0` OFF / `1` ON                                                                 | If the frame _full window_ button should be toggled on                                                                                  | `0` (OFF)                                                                                                                                                                                                                                                 |
-| `frameReal`        | `0` OFF / `1` ON                                                                 | If the frame _fit window_ button should be toggled on                                                                                   | `0` (OFF)                                                                                                                                                                                                                                                 |
-| `frameSmooth`      | `0` OFF / `1` ON                                                                 | If the frame _img smoothing_ button should be toggled on                                                                                | `0` (OFF)                                                                                                                                                                                                                                                 |
-| `pos`              | `integer,integer`                                                                | The position/offset of the GIF/frame rendering canvas (`left,top` safe integers)                                                        | `0,0` (origin)                                                                                                                                                                                                                                            |
-| `zoom`             | float                                                                            | The starting zoom of the GIF/frame rendering canvas (clamped to +- 500)<br>calculation: `canvas_width = GIF_width * (e ↑ (zoom / 100))` | `0` (no zoom)                                                                                                                                                                                                                                             |
+| Name               | Possible values                                                                  | Description                                                                                                                             | Default value                                                                                                                                                                                                                                           |
+| ------------------ | -------------------------------------------------------------------------------- | --------------------------------------------------------------------------------------------------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `url`              | a GIF file URL                                                                   | GIF URL to load                                                                                                                         | [This public domain GIF from Wikimedia<br><img height="69" alt="Wax_fire.gif" src="https://upload.wikimedia.org/wikipedia/commons/a/a2/Wax_fire.gif">](https://commons.wikimedia.org/wiki/File:Wax_fire.gif "Open file info page on Wikimedia Commons") |
+| `gifInfo`          | `0` collapsed / `1` expanded                                                     | If the _GIF info_ section should be expanded                                                                                            | `1` (expanded)                                                                                                                                                                                                                                          |
+| `globalColorTable` | `0` collapsed / `1` expanded                                                     | If the _Global color table_ section should be expanded                                                                                  | `1` (expanded)                                                                                                                                                                                                                                          |
+| `appExtList`       | `0` collapsed / `1` expanded                                                     | If the _Application-Extensions_ section should be expanded                                                                              | `1` (expanded)                                                                                                                                                                                                                                          |
+| `commentsList`     | `0` collapsed / `1` expanded                                                     | If the _Comments_ section should be expanded                                                                                            | `0` (collapsed)                                                                                                                                                                                                                                         |
+| `unExtList`        | `0` collapsed / `1` expanded                                                     | If the _Unknown extensions_ section should be expanded                                                                                  | `0` (collapsed)                                                                                                                                                                                                                                         |
+| `frameView`        | `0` collapsed / `1` expanded                                                     | If the _frame canvas_ section should be expanded                                                                                        | `0` (collapsed)                                                                                                                                                                                                                                         |
+| `frameInfo`        | `0` collapsed / `1` expanded                                                     | If the _Frame info_ section should be expanded                                                                                          | `0` (collapsed)                                                                                                                                                                                                                                         |
+| `localColorTable`  | `0` collapsed / `1` expanded                                                     | If the _local color table_ section should be expanded                                                                                   | `1` (expanded)                                                                                                                                                                                                                                          |
+| `frameText`        | `0` collapsed / `1` expanded                                                     | If the (Frame) _Text_ section should be expanded                                                                                        | `0` (collapsed)                                                                                                                                                                                                                                         |
+| `import`           | `0` closed / `1` open                                                            | If the import menu should be opened                                                                                                     | `0` (closed)                                                                                                                                                                                                                                            |
+| `play`             | float between `-100` and `100`<br>`<0` reversed / `>0` (or empty) forwards       | If the GIF should be playing, how fast, and in what direction                                                                           | `0` (paused)                                                                                                                                                                                                                                            |
+| `f`                | zero-based frame index (positive integer)<br>_if out of bounds uses first frame_ | Start at a specific frame                                                                                                               | `0` (first frame)                                                                                                                                                                                                                                       |
+| `userLock`         | `0` OFF / `1` ON                                                                 | If the _user input lock_ button should be toggled on                                                                                    | `0` (OFF)                                                                                                                                                                                                                                               |
+| `gifFull`          | `0` OFF / `1` ON                                                                 | If the GIF _full window_ button should be toggled on                                                                                    | `0` (OFF)                                                                                                                                                                                                                                               |
+| `gifReal`          | `0` OFF / `1` ON                                                                 | If the GIF _fit window_ button should be toggled on                                                                                     | `0` (OFF)                                                                                                                                                                                                                                               |
+| `gifSmooth`        | `0` OFF / `1` ON                                                                 | If the GIF _img smoothing_ should be toggled on                                                                                         | `0` (OFF)                                                                                                                                                                                                                                               |
+| `frameFull`        | `0` OFF / `1` ON                                                                 | If the frame _full window_ button should be toggled on                                                                                  | `0` (OFF)                                                                                                                                                                                                                                               |
+| `frameReal`        | `0` OFF / `1` ON                                                                 | If the frame _fit window_ button should be toggled on                                                                                   | `0` (OFF)                                                                                                                                                                                                                                               |
+| `frameSmooth`      | `0` OFF / `1` ON                                                                 | If the frame _img smoothing_ button should be toggled on                                                                                | `0` (OFF)                                                                                                                                                                                                                                               |
+| `pos`              | `integer,integer`                                                                | The position/offset of the GIF/frame rendering canvas (`left,top` safe integers)                                                        | `0,0` (origin)                                                                                                                                                                                                                                          |
+| `zoom`             | float                                                                            | The starting zoom of the GIF/frame rendering canvas (clamped to +- 500)<br>calculation: `canvas_width = GIF_width * (e ↑ (zoom / 100))` | `0` (no zoom)                                                                                                                                                                                                                                           |
 
-</details>
+</details><br>
+
+Scroll [UP](#available-url-parameters "Scroll to start of section: Available URL parameters")
+    | [TOP](#gif-decoder "Scroll to top of document: GIF decoder")
 
 ### Edge cases
 
@@ -81,6 +82,9 @@ For example `?url=https%3A%2F%2Fexample.com%2Fexample.gif&gifInfo=0&frameInfo` t
 - If `pos` and `zoom` are given, apply `pos` before `zoom`
 - If, during decoding, an error occurs, it will show the import menu and display the error without further decoding/rendering
 
+Scroll [UP](#available-url-parameters "Scroll to start of section: Available URL parameters")
+    | [TOP](#gif-decoder "Scroll to top of document: GIF decoder")
+
 ## Exported constants
 
 Exported constants in the [`GIFdecodeModule.js`](./GIFdecodeModule.js "open file GIFdecodeModule.js") file.
@@ -93,26 +97,20 @@ Exported constants in the [`GIFdecodeModule.js`](./GIFdecodeModule.js "open file
 
 See description/type information [further below](#disposalmethod-attributes-enum "Scroll to `DisposalMethod` definition").
 
+Scroll [UP](#exported-constants "Scroll to start of section: Exported constants")
+    | [TOP](#gif-decoder "Scroll to top of document: GIF decoder")
+
 ### Export `decodeGIF` function
 
 Decodes a GIF into its components for rendering on a canvas.
 
-<details><summary><code>async decodeGIF(gifURL, avgAlpha, fetchProgressCallback, sizeCheck, progressCallback)</code></summary>
+<details><summary><code>async decodeGIF(gifURL, abortSignal, sizeCheck, progressCallback)</code></summary>
 
 function parameters (in order)
 
 1. `gifURL` (`string`) The URL of a GIF file.
-2. `avgAlpha` (optional `boolean`) If this is `true` then, when encountering a transparent pixel, it uses the average value of the pixels RGB channels to calculate the alpha channels value, otherwise alpha channel is either 0 or 1. Default `false`.
-3. `fetchProgressCallback` (optional `function`) Optional callback for showing progress of fetching the image data (in bytes).
-
-   ```typescript
-   function(
-       loaded: number,      // amount of bytes loaded
-       total: number | null // total amount of bytes to load (or null if not available)
-   ): any
-   ```
-
-4. `sizeCheck` (optional `function`) Optional check if the loaded file should be processed if this yields `false` then it will reject with `file to large`
+2. `abortSignal` (`AbortSignal`) use this to abort fetching/loading/decoding the GIF file.
+3. `sizeCheck` (optional `function`) Optional check if the loaded file should be processed if this yields `false` then it will reject with `file to large`
 
    ```typescript
    function(
@@ -120,7 +118,7 @@ function parameters (in order)
    ): Promise<boolean> | boolean // continues decoding with `true`
    ```
 
-5. `progressCallback` (optional `function`) Optional callback for showing progress of decoding process (when GIF is interlaced calls after each pass (4x on the same frame)).
+4. `progressCallback` (optional `function`) Optional callback for showing progress of decoding process (when GIF is interlaced calls after each pass (4x on the same frame)).
    If asynchronous, it waits for it to resolve.
 
    ```typescript
@@ -134,37 +132,44 @@ function parameters (in order)
    ```
 
 Returns ([`GIF`](#gif-attributes "scroll down to the `GIF` attributes section")) a promise of the [`GIF`](#gif-attributes "scroll down to the `GIF` attributes section") with each frame decoded separately.
-The promise may reject for one the following reasons:
+The promise may reject (throw) for the following reasons:
 
-- `fetch error` when trying to fetch the GIF from `gifURL` (probably blocked by [CORS security options](https://developer.mozilla.org/en-US/docs/Web/HTTP/CORS "MDN: Cross-Origin Resource Sharing"))
-- `fetch aborted` when trying to fetch the GIF from `gifURL`
-- `loading error [CODE]` when URL yields a status code that's not between 200 and 299 (inclusive)
+- fetch errors when trying to fetch the GIF from `gifURL`
+  - `fetch error: network error`
+  - `fetch error (connecting)` any unknown error during `fetch`
+  - `fetch error: recieved STATUS_CODE` when URL yields a status code that's NOT between 200 and 299 (inclusive)
+  - `fetch error: could not read resource`
+  - `fetch error: resource to large` (not from `sizeCheck`)
+  - `fetch error (reading)` any unknown error during `Response.arrayBuffer`
 - `file to large` when `sizeCheck` yields `false`
 - `not a supported GIF file` when it's not a GIF file or the version is not `GIF89a`
 - `error while parsing frame [INDEX] "ERROR"` while decoding GIF - one of the following
   - `GIF frame size is to large`
   - `plain text extension without global color table`
   - `undefined block found`
+  - `reading out of range` (unexpected end of file during decoding)
+  - `unknown error`
 
 Throws (`TypeError`) for one of the following (in order)
 
-1. `gifURL` is not a string
-2. `avgAlpha` is given (not `null` or `undefined`) but not a boolean
-3. `fetchProgressCallback` is given (not `null` or `undefined`) but not a function
-4. `sizeCheck` is given (not `null` or `undefined`) but not a function
-5. `progressCallback` is given (not `null` or `undefined`) but not a function
+1. `gifURL` is not a `string`
+2. `abortSignal` is not an `AbortSignal`
+3. `sizeCheck` is given (not `null` or `undefined`) but not a `function`
+4. `progressCallback` is given (not `null` or `undefined`) but not a `function`
 
-</details>
+</details><br>
+
+Scroll [UP](#exported-constants "Scroll to start of section: Exported constants")
+    | [TOP](#gif-decoder "Scroll to top of document: GIF decoder")
 
 ### Export `getGIFLoopAmount` function
 
 Extract the animation loop amount from a [`GIF`](#gif-attributes "scroll down to the `GIF` attributes section").
 
+> [!NOTE]
 >
-> [!NOTE]\
 > Generally, for proper looping support, the `NETSCAPE2.0` extension must appear immediately after the global color table of the logical screen descriptor (at the beginning of the GIF file).
 > Still, here, it doesn't matter where it was found.
->
 
 <details><summary><code>getGIFLoopAmount(gif)</code></summary>
 
@@ -174,7 +179,10 @@ function parameters (in order)
 
 Returns (`number`) the loop amount of `gif` as 16bit number (0 to 65'535 or `Infinity`).
 
-</details>
+</details><br>
+
+Scroll [UP](#exported-constants "Scroll to start of section: Exported constants")
+    | [TOP](#gif-decoder "Scroll to top of document: GIF decoder")
 
 ## Type documentation
 
@@ -199,7 +207,10 @@ The `GIF` object constructed has the following attributes.
 | `applicationExtensions` | `ApplicationExtension[]`   | all application extensions found <br> type information [further below](#applicationextension-attributes "Scroll to `ApplicationExtension` definition")                            |
 | `unknownExtensions`     | `[number,Uint8Array][]`    | all unknown extensions found (`[<identifier>,<raw bytes>]`)                                                                                                                       |
 
-</details>
+</details><br>
+
+Scroll [UP](#type-documentation "Scroll to start of section: Type documentation")
+    | [TOP](#gif-decoder "Scroll to top of document: GIF decoder")
 
 ### `Frame` attributes
 
@@ -222,7 +233,10 @@ The `GIF` object constructed has the following attributes.
 | `reserved`              | `number`                   | _reserved for future use_ 2bits (from packed field in image descriptor block)                                                                                                                 |
 | `GCreserved`            | `number`                   | _reserved for future use_ 3bits (from packed field in graphics control extension block)                                                                                                       |
 
-</details>
+</details><br>
+
+Scroll [UP](#type-documentation "Scroll to start of section: Type documentation")
+    | [TOP](#gif-decoder "Scroll to top of document: GIF decoder")
 
 ### `DisposalMethod` attributes (enum)
 
@@ -239,7 +253,10 @@ The `GIF` object constructed has the following attributes.
 | `UndefinedC`             | `6`                            | undefined                   | fallback to `Unspecified`                                                                                       |
 | `UndefinedD`             | `7`                            | undefined                   | fallback to `Unspecified`                                                                                       |
 
-</details>
+</details><br>
+
+Scroll [UP](#type-documentation "Scroll to start of section: Type documentation")
+    | [TOP](#gif-decoder "Scroll to top of document: GIF decoder")
 
 ### `PlainTextData` attributes
 
@@ -257,7 +274,10 @@ The `GIF` object constructed has the following attributes.
 | `backgroundColor` | `number`         | the index into the global color table for the background color of the text                 |
 | `text`            | `string`         | the text to render on screen                                                               |
 
-</details>
+</details><br>
+
+Scroll [UP](#type-documentation "Scroll to start of section: Type documentation")
+    | [TOP](#gif-decoder "Scroll to top of document: GIF decoder")
 
 ### `ApplicationExtension` attributes
 
@@ -269,4 +289,7 @@ The `GIF` object constructed has the following attributes.
 | `authenticationCode` | `string`         | 3 bytes to authenticate the application identifier |
 | `data`               | `Uint8Array`     | the (raw) data of this application extension       |
 
-</details>
+</details><br>
+
+Scroll [UP](#type-documentation "Scroll to start of section: Type documentation")
+    | [TOP](#gif-decoder "Scroll to top of document: GIF decoder")

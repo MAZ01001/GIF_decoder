@@ -96,6 +96,7 @@
             <div id="gifLoad" title="Shows current decoding progress">
                 <p id="gifLoadText">Loading...</p>
                 <progress id="gifLoadProgress"></progress>
+                <input type="button" id="gifLoadAbort" value="Abort" title="Abort decoding process and reopen import menu">
             </div>
         </div>
         <label for="timeRange" title="Current timestamp (with frame timestamps in tickmarks below)">Time: <input type="range" id="timeRange" list="timeTickmarks" aria-disabled="true" tabindex="-1"> <span id="time">-</span> ms</label>
@@ -105,6 +106,7 @@
             <input type="button" id="overrideMenu" data-toggle="0" value="Override">
             <div>
                 <p>Override default render behaviour <small>(WIP)</small></p>
+                <label for="overrideFrames" title="greatly improves playback performance in either direction at the cost of memory - about as much memory as the GIF itself"><input type="checkbox" id="overrideFrames"> Prerender frames <input type="button" id="overrideFramesRender" data-render="0" value="Render now" title="Re-render frames now (with current override settings)"> <small>(includes current overrides)</small></label>
                 <label for="overrideClear" title="Allways clears the canvas between the last and the first frame - ignoring the disposal method of the last frame"><input type="checkbox" id="overrideClear"> Clear canvas on frame 0 <small>(slightly improves the performance impact of reverse playback)</small></label>
                 <label for="overrideBackground" title="Allways uses transparent when restoring to backgrond color (sets drawn pixels transparent) - ignoring the background color and the transparency color of the current frame"><input type="checkbox" id="overrideBackground"> Restoring to background color is allways transparent</label>
                 <label for="overrideText" title="Ignores the text extension of the current frame"><input type="checkbox" id="overrideText"> Don't render text extension</label>
@@ -133,7 +135,7 @@
         <div id="infoPanels">
             <div>
                 <input type="button" id="open" value="Open GIF" title="Click to open the import menu">
-                <a target="_blank" rel="noopener noreferrer" href="https://github.com/MAZ01001/GIF_decoder" title="GitHub project page with documentation">GitHub project / Documentation</a>
+                <a id="github" target="_blank" rel="noopener noreferrer" href="https://github.com/MAZ01001/GIF_decoder" title="GitHub project with documentation">Documentation & source code</a>
             </div>
             <fieldset><legend title="General information about the GIF">GIF info</legend>
                 <details open id="detailsGIFInfo"><summary>Click to toggle contents</summary>
@@ -225,6 +227,7 @@
             </fieldset>
         </div>
     </div>
+    <div id="copyNote">copied to clipboard</div>
     <dialog id="importMenu">
         <h2>Import</h2>
         <fieldset><legend title="Load a GIF from URL or a file">Load a GIF file</legend>

@@ -11,16 +11,17 @@ body{
     margin: 0;
     overflow: hidden;
     font: large "Times New Roman", Times, serif;
+    color-scheme: dark;
 }
 ::selection{
-    background-color: #F90;
+    background-color: #f90;
     color: #000;
     text-shadow: none;
 }
 dialog::backdrop{background-color: #0007;}
 dialog[open]{
     background-color: #444;
-    color: #0F0;
+    color: #0f0;
     border-radius: 1rem;
     display: grid;
     gap: .7rem;
@@ -39,15 +40,15 @@ fieldset{
 }
 fieldset>legend{cursor: help;}
 input[type=range]:not([aria-disabled=true]):hover,
-input[type=button]:not(:disabled):hover,
-input[type=text]:not(:read-only):hover,
-input[type=number]:not(:read-only):hover{outline: 4px ridge #0A0;}
-input[type=button]:not(:disabled),
+input[type=button]:enabled:hover,
+input[type=text]:read-write:hover,
+input[type=number]:read-write:hover{outline: 4px ridge #0a0;}
+input[type=button]:enabled,
 input[type=range]:not([aria-disabled=true]),
 input[type=checkbox],
 details>summary{cursor: pointer;}
 details>summary{
-    color: #0A0;
+    color: #0a0;
     font-style: italic;
 }
 input:read-only,
@@ -71,11 +72,21 @@ textarea{
 }
 input[type=button]{
     background-color: #333;
-    color: #0F0;
+    color: #0f0;
+    font-family: inherit;
     border: 2px outset #000;
     border-radius: .25rem;
     outline-offset: 2px;
 }
+input[type=button]:disabled{
+    color: #0a0;
+    background-color: #222;
+}
+input[type=button]:enabled:active{
+    background-color: #444;
+    border-style: inset;
+}
+input[type=button]:disabled:active{border-color: #722;}
 input:disabled{
     cursor: not-allowed;
     border: 2px solid #7777;
@@ -88,7 +99,7 @@ input[type=color]{
     border-radius: .5rem;
     padding: 0px 13px;
     vertical-align: middle;
-    outline: 0 ridge #0A0;
+    outline: 0 ridge #0a0;
     outline-offset: -.1rem;
 }
 input[type=color]:hover{outline-width: 2px;}
@@ -96,7 +107,8 @@ input[type=color]:focus{
     outline-width: 2px;
     outline-color: #080;
 }
-input[type=color]:active{outline-color: #0F0;}
+input[type=color]:active{outline-color: #0f0;}
+input[type=checkbox]{accent-color: #0f0;}
 input[type=range][list]{color: inherit;}
 label{white-space: nowrap;}
 table{border-collapse: collapse;}
@@ -110,11 +122,11 @@ input[type=range],
 progress{
     width: 21rem;
     vertical-align: middle;
-    accent-color: #0F0;
+    accent-color: #0f0;
 }
 input[type=range]{height: 1.375rem;}
 progress{height: 1rem;}
-progress:indeterminate{accent-color: #0A0;}
+progress:indeterminate{accent-color: #0a0;}
 input[type=range][aria-disabled=true]{pointer-events: none;}
 input[type=range][aria-disabled=true]::-webkit-slider-thumb{visibility: hidden;}
 input[data-toggle="1"]{background-color: #222;}
@@ -174,8 +186,8 @@ div#frameView{
 div#gifView,
 div#frameView{
     /* TODO remove when bg-color-chooser-menu is implemented */
-    --checker-a: #EEE;--checker-b: #FFF;
-    --checker-a: #888;--checker-b: #AAA;
+    --checker-a: #eee;--checker-b: #fff;
+    --checker-a: #888;--checker-b: #aaa;
     --checker-a: #222;--checker-b: #333;
     --checker-a: #000;--checker-b: #111;
     --checker-a: transparent;--checker-b: transparent;
@@ -246,8 +258,8 @@ canvas#htmlFrameCanvas.real{
     /*~ updated in JS when zooming in/out */
     width: calc(var(--canvas-width) * var(--canvas-scaler));
 }
-div#gifView:has(canvas#htmlCanvas.real),
-div#frameView:has(canvas#htmlFrameCanvas.real){cursor: grab;}
+div#gifView:has(>canvas#htmlCanvas.real),
+div#frameView:has(>canvas#htmlFrameCanvas.real){cursor: grab;}
 html.grabbing,
 html.grabbing *{cursor: grabbing !important;}
 span#gifFPS,
@@ -255,7 +267,7 @@ span#frameFPS{
     position: absolute;
     top: .1rem;
     left: .2rem;
-    color: #0A0;
+    color: #0a0;
     font: small "consolas", monospace;
     white-space: pre;
     text-shadow:
@@ -286,7 +298,7 @@ div#frameLoad.done{
 p#gifLoadText,
 p#frameLoadText{
     margin-block: .5rem;
-    color: #0F0;
+    color: #0f0;
     font: x-large "consolas", monospace;
     text-shadow: 0 0 4px #000,
         1px 1px #000,
@@ -299,18 +311,22 @@ progress#frameLoadProgress{
     width: 100%;
     height: 2rem;
 }
+input#gifLoadAbort{
+    font-size: large;
+    padding: .2rem .3rem;
+}
 label[for=timeRange]{
     grid-area: 3/1/4/4;
     pointer-events: none;
 }
 label[for=frameRange]{grid-area: 4/1/5/4;}
-label[for=frameRange]:has(input#frameRange[aria-disabled=true]){pointer-events: none;}
-input#frameRange{accent-color: #0A0;}
+label[for=frameRange]:has(>input#frameRange[aria-disabled=true]){pointer-events: none;}
+input#frameRange{accent-color: #0a0;}
 div#overrideOptions{
     grid-area: 5/1/6/2;
     position: relative;
 }
-div#overrideOptions:has(input[type=checkbox]:checked)>input{border-color: #0A0;}
+div#overrideOptions:has(>div>label>input[type=checkbox]:checked)>input{border-color: #0a0;}
 div#overrideOptions>input{
     font-size: medium;
     padding: .2rem .3rem;
@@ -354,7 +370,7 @@ div#overrideOptions>div>p{
     margin-block: .5rem;
     font-size: larger;
 }
-div#overrideOptions>div>label:has(input:disabled){color: #0A0;}
+div#overrideOptions>div>label:has(>input:first-of-type:disabled){color: #0a0;}
 div#overrideOptions>div>label:not(:last-of-type)::after{
     content: "";
     position: absolute;
@@ -363,6 +379,21 @@ div#overrideOptions>div>label:not(:last-of-type)::after{
     height: .1rem;
     border-bottom: 2px solid #333;
 }
+input#overrideFramesRender{font-size: small;}
+div#overrideOptions>div:has(>label>:is(
+    input#overrideClear,
+    input#overrideBackground
+):is(
+    [data-render="0"]:checked,
+    [data-render="1"]:not(:checked)
+))>label[for=overrideFrames]>input:checked~small,
+div#overrideOptions>div>label:has(>input#overrideFrames:checked)~label:has(>:is(
+    input#overrideClear,
+    input#overrideBackground
+):is(
+    [data-render="0"]:checked,
+    [data-render="1"]:not(:checked)
+)){color: #f90;}
 div#playerControls{
     grid-area: 5/2/6/3;
     display: flex;
@@ -380,7 +411,7 @@ div#playerControls>input{
 div#playerControls>input:disabled,
 input#speed:disabled{
     background-color: #222;
-    color: #0A0;
+    color: #0a0;
 }
 div#playerControls>input#seekPrevious,
 div#playerControls>input#seekNext{font-size: 1.53rem;}
@@ -390,6 +421,9 @@ div#playerControls.playing>input#play{
     background-color: #222;
     text-shadow: 0px 0px 8px #0f0;
 }
+div#playerControls.reverse>input#reverse:active,
+div#playerControls.paused>input#pause:active,
+div#playerControls.playing>input#play:active{background-color: #111;}
 input#speed{
     grid-area: 5/3/6/4;
     width: 4.25rem;
@@ -399,7 +433,7 @@ input#speed{
 }
 input#speed.stop{
     background-color: #422;
-    border-color: #F00;
+    border-color: #f00;
 }
 fieldset#userInputArea{
     grid-area: 6/1/7/4;
@@ -409,17 +443,17 @@ fieldset#userInputArea{
     justify-items: stretch;
     place-content: safe center;
 }
-fieldset#userInputArea:not(.waiting):not(.infinity)>label,
-fieldset#userInputArea:not(.waiting):not(.infinity)>input#userInput,
-fieldset#loopArea:has(input#loopForce[data-toggle="1"])>span{opacity: .25;}
-fieldset#userInputArea.waiting{border: 2px groove #44F;}
-fieldset#userInputArea.waiting progress#userInputTimeout{accent-color: #44F;}
-fieldset#userInputArea.infinity>label{color: #F44;}
-fieldset#userInputArea.infinity progress#userInputTimeout{accent-color: #F44;}
+fieldset#userInputArea:not(.waiting,.infinity)>label,
+fieldset#userInputArea:not(.waiting,.infinity)>input#userInput,
+fieldset#loopArea:has(>input#loopForce[data-toggle="1"])>span{opacity: .25;}
+fieldset#userInputArea.waiting{border: 2px groove #44f;}
+fieldset#userInputArea.waiting progress#userInputTimeout{accent-color: #44f;}
+fieldset#userInputArea.infinity>label{color: #f44;}
+fieldset#userInputArea.infinity progress#userInputTimeout{accent-color: #f44;}
 label[for=userInputTimeout]{grid-area: 1/1/2/3;}
 input#userInput{grid-area: 2/1/3/2;}
 input#userInput:disabled,
-input#loopForce:disabled{color: #0A0;}
+input#loopForce:disabled{color: #0a0;}
 input#userInputLock{grid-area: 2/2/3/3;}
 input#userInput,
 input#userInputLock,
@@ -451,25 +485,27 @@ div#infoPanels{
     justify-content: flex-start;
 }
 div#infoPanels>div:first-child{
-    display: grid;
-    gap: .5rem;
-    grid-template-columns: 1fr 1fr;
-    place-items: safe center;
-    align-content: safe center;
+    align-self: stretch;
+    display: flex;
+    padding: .5rem 0;
+    align-items: safe center;
     justify-content: space-around;
 }
-div#infoPanels>div:first-child>*{font: inherit;}
-div#infoPanels>div:first-child>a{
-    color: #0AF;
+a#github,
+input#open{padding: .2rem .3rem;}
+input#open{font-size: large;}
+a#github{
+    width: min-content;
+    font-family: "consolas", monospace;
+    color: #0af;
     text-decoration: none;
 }
-div#infoPanels>div:first-child>a:visited{color: #05F;}
-div#infoPanels>div:first-child>a:hover,
-div#infoPanels>div:first-child>a:active{
-    color: #0FF;
-    text-shadow: 0px 0px 15px #00F,
-        0px 0px 15px #00F,
-        0px 0px 15px #00F;
+a#github:visited{color: #05f;}
+a#github:hover,
+a#github:active{
+    color: #0ff;
+    outline: 4px ridge #00f;
+    border-radius: .5rem;
 }
 div#infoPanels>fieldset{align-self: stretch;}
 div#gifInfoArea,
@@ -509,8 +545,6 @@ div#unExtList{
     overflow: auto;
     scrollbar-gutter: stable;
 }
-div#globalColorTable:not(:has(span)),
-div#frameColorTable:not(:has(span)){height: 8rem;}
 div#globalColorTable::-webkit-resizer,
 div#frameColorTable::-webkit-resizer,
 div#appExtList::-webkit-resizer,
@@ -527,13 +561,17 @@ div#frameColorTable{
     align-content: safe center;
     justify-content: space-between;
 }
+div#globalColorTable:has(>:nth-child(10)),
+div#frameColorTable:has(>:nth-child(10)){height: 8rem;}
 div#globalColorTable>span,
 div#frameColorTable>span,
 div#appExtList>span,
 div#commentsList>span,
 div#unExtList>span{
-    font: italic bold large;
-    color: #0A0;
+    font-style: italic;
+    font-weight: bold;
+    font-size: large;
+    color: #0a0;
 }
 div#globalColorTable>label,
 div#frameColorTable>label{
@@ -588,7 +626,25 @@ div#unExtList{
 }
 div#unExtList>div{display: contents;}
 div#unExtList>div>span{font-family: "consolas", monospace;}
-div#unExtList>div>span>small{color: #0A0;}
+div#unExtList>div>span>small{color: #0a0;}
+div#copyNote{
+    pointer-events: none;
+    position: fixed;
+    translate: -50% -100%;
+    left: 50%;
+    bottom: -2rem;
+    padding: .2rem .7rem;
+    scale: 0%;
+    font-size: large;
+    white-space: nowrap;
+    border: 1px outset #000;
+    border-radius: 1rem;
+    background-color: #333;
+}
+div#copyNote[data-state=f]{
+    background-color: #a00;
+    color: #ff0;
+}
 /*~  _____                           _    ___  ___                  */
 /*~ |_   _|                         | |   |  \/  |                  */
 /*~   | | _ __ ___  _ __   ___  _ __| |_  | .  . | ___ _ __  _   _  */
@@ -612,22 +668,22 @@ dialog#importMenu>fieldset:first-of-type{
     align-items: stretch;
     place-content: safe center;
 }
-label[for=importURL],
-label[for=importFile]{display: contents;}
+dialog#importMenu>fieldset:first-of-type>label[for=importURL],
+dialog#importMenu>fieldset:first-of-type>label[for=importFile]{display: contents;}
 input#importURL{
     background-color: #000;
-    color: #0F0;
+    color: #0f0;
     border-radius: .25rem;
 }
-input#importURL::placeholder{color: #0A0;}
+input#importURL::placeholder{color: #0a0;}
 dialog#importMenu>fieldset:first-of-type>p{
     grid-area: 2/1/3/3;
     margin: .5rem 0;
     text-align: center;
     font-size: medium;
 }
-label[for="importFile"]:has(input:disabled),
-label[for="importURL"]:has(input:disabled){opacity: .25;}
+dialog#importMenu>fieldset:first-of-type>label[for=importURL]:has(>input:disabled),
+dialog#importMenu>fieldset:first-of-type>label[for=importFile]:has(>input:disabled){opacity: .25;}
 img#importPreview{
     min-width: 6rem;
     min-height: 4rem;
@@ -637,15 +693,16 @@ img#importPreview{
 }
 p#importWarn{
     margin: .5rem 0;
+    padding: .2rem .5rem;
     max-width: 25rem;
-    color: #F44;
+    max-height: 7rem;
+    overflow: auto;
+    border-radius: .5rem;
+    box-sizing: border-box;
+    background-color: #300;
+    color: #f00;
     text-align: center;
-    font-size: 1.4rem;
-    text-shadow: 0 0 4px #000,
-        1px 1px #000,
-        1px -1px #000,
-        -1px 1px #000,
-        -1px -1px #000;
+    font-size: 1.5rem;
 }
 p#importWarn:empty{margin: 0;}
 div#importActions{
@@ -659,7 +716,18 @@ div#importActions>input{
     font-size: medium;
     padding: .2rem .5rem;
 }
-input#importConfirm:disabled{color: #0A0;}
+input#importConfirm:disabled{color: #0a0;}
+/*~  _____              __ _                 ___  ___                  */
+/*~ /  __ \            / _(_)                |  \/  |                  */
+/*~ | /  \/ ___  _ __ | |_ _ _ __ _ __ ___   | .  . | ___ _ __  _   _  */
+/*~ | |    / _ \| '_ \|  _| | '__| '_ ` _ \  | |\/| |/ _ \ '_ \| | | | */
+/*~ | \__/\ (_) | | | | | | | |  | | | | | | | |  | |  __/ | | | |_| | */
+/*~  \____/\___/|_| |_|_| |_|_|  |_| |_| |_| \_|  |_/\___|_| |_|\__,_| */
+span#confirmText{
+    white-space: pre;
+    text-align: center;
+    line-height: 1.5rem;
+}
 /*~  _____                _ _ _                 */
 /*~ /  ___|              | | | |                */
 /*~ \ `--.  ___ _ __ ___ | | | |__   __ _ _ __  */
@@ -669,9 +737,9 @@ input#importConfirm:disabled{color: #0A0;}
 @supports not selector(::-webkit-scrollbar){
     *{
         scrollbar-width: thin;
-        scrollbar-color: #0A07 transparent;
+        scrollbar-color: #0a07 transparent;
     }
-    *:hover{scrollbar-color: #0A0 transparent;}
+    *:hover{scrollbar-color: #0a0 transparent;}
 }
 ::-webkit-scrollbar{
     width:.8rem;
@@ -681,30 +749,30 @@ input#importConfirm:disabled{color: #0A0;}
 ::-webkit-scrollbar-thumb:horizontal:window-inactive{border-bottom-style:dashed;}
 ::-webkit-scrollbar-thumb:vertical{
     background-color:#0000;
-    border-right:.3rem solid #0A0F;
+    border-right:.3rem solid #0a0f;
     border-radius:0;
 }
 :hover::-webkit-scrollbar-thumb:vertical{
     background-color:#000F;
-    box-shadow:inset .4rem 0 .4rem 0 #0A0F;
+    box-shadow:inset .4rem 0 .4rem 0 #0a0f;
     border:none;
     border-top-left-radius:1rem;
     border-bottom-left-radius:1rem;
 }
 ::-webkit-scrollbar-thumb:horizontal{
     background-color:#0000;
-    border-bottom:.3rem solid #0A0F;
+    border-bottom:.3rem solid #0a0f;
     border-radius:0;
 }
 :hover::-webkit-scrollbar-thumb:horizontal{
     background-color:#000F;
-    box-shadow:inset 0 .4rem .4rem 0 #0A0F;
+    box-shadow:inset 0 .4rem .4rem 0 #0a0f;
     border:none;
     border-top-left-radius:1rem;
     border-top-right-radius:1rem;
 }
-::-webkit-scrollbar-thumb:hover:vertical{box-shadow:inset .4rem 0 .4rem 0 #0F0F;}
-::-webkit-scrollbar-thumb:hover:horizontal{box-shadow:inset 0 .4rem .4rem 0 #0F0F;}
+::-webkit-scrollbar-thumb:hover:vertical{box-shadow:inset .4rem 0 .4rem 0 #0f0f;}
+::-webkit-scrollbar-thumb:hover:horizontal{box-shadow:inset 0 .4rem .4rem 0 #0f0f;}
 ::-webkit-scrollbar-track,
 ::-webkit-scrollbar-track-piece,
 ::-webkit-scrollbar-button,

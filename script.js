@@ -516,7 +516,7 @@ const decodeGIF=async(gifURL,abortSignal,sizeCheck,progressCallback)=>{
             gif.totalTime+=frame.delayTime;
         }
         return gif;
-    }catch(err){throw err===abortSignal?abortSignal.reason:`error while parsing frame [${frameIndex}] "${err instanceof EvalError||err instanceof RangeError?err.message:"unknown error"}"`;}
+    }catch(err){throw err===abortSignal?abortSignal.reason:`error while parsing frame [${frameIndex}] "${(err instanceof EvalError)||(err instanceof RangeError)?err.message:"unknown error"}"`;}
 };
 /**
  * ## Extract the animation loop amount from a {@linkcode GIF}

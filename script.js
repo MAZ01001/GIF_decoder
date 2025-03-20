@@ -379,16 +379,15 @@ const decodeGIF=async(gifURL,abortSignal,sizeCheck,progressCallback)=>{
         pos:0,
         data:new Uint8ClampedArray(raw),
         nextByte(){
-            if(this.pos+1>=this.len)throw RangeError("reading out of range");
+            if(this.pos>=this.len)throw new RangeError("reading out of range");
             return this.data[this.pos++];
         },
         nextTwoBytes(){
-            if(this.pos>=this.len)throw RangeError("reading out of range");
-            this.pos+=2;
+            if((this.pos+=2)>this.len)throw new RangeError("reading out of range");
             return this.data[this.pos-2]+(this.data[this.pos-1]<<8);
         },
         getString(count){
-            if(this.pos+count>=this.len)throw RangeError("reading out of range");
+            if(this.pos+count>this.len)throw new RangeError("reading out of range");
             let s="";
             for(;--count>=0;s+=String.fromCharCode(this.data[this.pos++]));
             return s;
@@ -396,8 +395,8 @@ const decodeGIF=async(gifURL,abortSignal,sizeCheck,progressCallback)=>{
         readSubBlocks(){
             let blockString="",size=0;
             do{
-                size=this.data[this.pos++];
-                if(this.pos+size>this.len)throw RangeError("reading out of range");
+                size=this.data[this.pos];
+                if((this.pos++)+size>this.len)throw new RangeError("reading out of range");
                 for(let count=size;--count>=0;blockString+=String.fromCharCode(this.data[this.pos++]));
             }while(size!==0);
             return blockString;
@@ -405,7 +404,7 @@ const decodeGIF=async(gifURL,abortSignal,sizeCheck,progressCallback)=>{
         readSubBlocksBin(){
             let size=0,len=0;
             for(let offset=0;(size=this.data[this.pos+offset])!==0;offset+=size+1){
-                if(this.pos+offset>=this.len)throw RangeError("reading out of range");
+                if(this.pos+offset>this.len)throw new RangeError("reading out of range");
                 len+=size;
             }
             const blockData=new Uint8Array(len);
@@ -415,7 +414,7 @@ const decodeGIF=async(gifURL,abortSignal,sizeCheck,progressCallback)=>{
         },
         skipSubBlocks(){
             for(;this.data[this.pos]!==0;this.pos+=this.data[this.pos]+1);
-            if(++this.pos>=this.len)throw RangeError("reading out of range");
+            if(++this.pos>this.len)throw new RangeError("reading out of range");
         }
     });
     if(abortSignal.aborted)throw abortSignal.reason;

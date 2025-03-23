@@ -9,8 +9,11 @@
 //~  \____/\___/\_|      \__,_|\___|\___\___/ \__,_|\___|
 //MARK: GIF decode
 
+// TODO add support for GIF87a
 // TODO ? test if corrupted files throw errors ~ like color index out of range...
 // TODO ~ build single class with all features; for ease of use (make import-able from anywhere and replace GIFdecodeModule.js with new GIF.js and remove here)
+// TODO ? maybe add overrideInterlaced "do not decode interlaced frames" ! overrides decoding not rendering
+// TODO ? show interlace flags after decoding
 
 /**@class@template {unknown} T*/
 const Interrupt=class Interrupt{

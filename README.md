@@ -65,7 +65,7 @@ For example `?url=https%3A%2F%2Fexample.com%2Fexample.gif&gifInfo=0&frameInfo` t
 | `pos`              | `integer,integer`                                                                | The position/offset of the GIF/frame rendering canvas (`left,top` safe integers)                                                        | `0,0` (origin)                                                                                                                                                                                                                                          |
 | `zoom`             | float                                                                            | The starting zoom of the GIF/frame rendering canvas (clamped to +- 500)<br>calculation: `canvas_width = GIF_width * (e ↑ (zoom / 100))` | `0` (no zoom)                                                                                                                                                                                                                                           |
 
-</details><br>
+</details>
 
 Scroll [UP](#available-url-parameters "Scroll to start of section: Available URL parameters")
     | [TOP](#gif-decoder "Scroll to top of document: GIF decoder")
@@ -157,7 +157,7 @@ Throws (`TypeError`) for one of the following (in order)
 3. `sizeCheck` is given (not `null` or `undefined`) but not a `function`
 4. `progressCallback` is given (not `null` or `undefined`) but not a `function`
 
-</details><br>
+</details>
 
 Scroll [UP](#exported-constants "Scroll to start of section: Exported constants")
     | [TOP](#gif-decoder "Scroll to top of document: GIF decoder")
@@ -179,7 +179,7 @@ function parameters (in order)
 
 Returns (`number`) the loop amount of `gif` as 16bit number (0 to 65'535 or `Infinity`).
 
-</details><br>
+</details>
 
 Scroll [UP](#exported-constants "Scroll to start of section: Exported constants")
     | [TOP](#gif-decoder "Scroll to top of document: GIF decoder")
@@ -207,7 +207,7 @@ The `GIF` object constructed has the following attributes.
 | `applicationExtensions` | `ApplicationExtension[]`   | all application extensions found <br> type information [further below](#applicationextension-attributes "Scroll to `ApplicationExtension` definition")                            |
 | `unknownExtensions`     | `[number,Uint8Array][]`    | all unknown extensions found (`[<identifier>,<raw bytes>]`)                                                                                                                       |
 
-</details><br>
+</details>
 
 Scroll [UP](#type-documentation "Scroll to start of section: Type documentation")
     | [TOP](#gif-decoder "Scroll to top of document: GIF decoder")
@@ -233,7 +233,7 @@ Scroll [UP](#type-documentation "Scroll to start of section: Type documentation"
 | `reserved`              | `number`                   | _reserved for future use_ 2bits (from packed field in image descriptor block)                                                                                                                 |
 | `GCreserved`            | `number`                   | _reserved for future use_ 3bits (from packed field in graphics control extension block)                                                                                                       |
 
-</details><br>
+</details>
 
 Scroll [UP](#type-documentation "Scroll to start of section: Type documentation")
     | [TOP](#gif-decoder "Scroll to top of document: GIF decoder")
@@ -253,7 +253,7 @@ Scroll [UP](#type-documentation "Scroll to start of section: Type documentation"
 | `UndefinedC`             | `6`                            | undefined                   | fallback to `Unspecified`                                                                                       |
 | `UndefinedD`             | `7`                            | undefined                   | fallback to `Unspecified`                                                                                       |
 
-</details><br>
+</details>
 
 Scroll [UP](#type-documentation "Scroll to start of section: Type documentation")
     | [TOP](#gif-decoder "Scroll to top of document: GIF decoder")
@@ -274,7 +274,7 @@ Scroll [UP](#type-documentation "Scroll to start of section: Type documentation"
 | `backgroundColor` | `number`         | the index into the global color table for the background color of the text                 |
 | `text`            | `string`         | the text to render on screen                                                               |
 
-</details><br>
+</details>
 
 Scroll [UP](#type-documentation "Scroll to start of section: Type documentation")
     | [TOP](#gif-decoder "Scroll to top of document: GIF decoder")
@@ -289,7 +289,7 @@ Scroll [UP](#type-documentation "Scroll to start of section: Type documentation"
 | `authenticationCode` | `string`         | 3 bytes to authenticate the application identifier |
 | `data`               | `Uint8Array`     | the (raw) data of this application extension       |
 
-</details><br>
+</details>
 
 Scroll [UP](#type-documentation "Scroll to start of section: Type documentation")
     | [TOP](#gif-decoder "Scroll to top of document: GIF decoder")

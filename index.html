@@ -87,17 +87,20 @@
         -->
         <div id="gifView" title="GIF render canvas">
             <canvas id="htmlCanvas">Your browser does not support the HTML canvas element</canvas>
+            <div id="gifLoad" title="Shows current decoding progress">
+                <span id="gifLoadText">Loading...</span>
+                <progress id="gifLoadProgress"></progress>
+                <div>
+                    <input type="button" id="gifLoadPause" value="Pause" data-toggle="0" title="Toggle pausing decoding process temporarily">
+                    <input type="button" id="gifLoadAbort" value="Abort" title="Abort decoding process and reopen import menu">
+                </div>
+            </div>
             <div id="gifViewButtons">
                 <input type="button" id="fullWindow" data-toggle="0" title="Toggle canvas fullscreen window" value="⤢">
                 <input type="button" id="fitWindow" data-toggle="0" title="Toggle between fit to window (🞕) and actual size (🞑)" value="🞕">
                 <input type="button" id="imgSmoothing" data-toggle="0" title="Toggle between pixelated (🙾) and smooth (🙼) image rendering" value="🙾">
             </div>
             <span id="gifFPS" title="Shows FPS for GIF canvas (not related to GIF speed)">fps -</span>
-            <div id="gifLoad" title="Shows current decoding progress">
-                <p id="gifLoadText">Loading...</p>
-                <progress id="gifLoadProgress"></progress>
-                <input type="button" id="gifLoadAbort" value="Abort" title="Abort decoding process and reopen import menu">
-            </div>
         </div>
         <label for="timeRange" title="Current timestamp (with frame timestamps in tickmarks below)">Time: <input type="range" id="timeRange" list="timeTickmarks" aria-disabled="true" tabindex="-1"> <span id="time">-</span> ms</label>
         <datalist id="timeTickmarks"></datalist>
@@ -177,16 +180,16 @@
                 <details id="detailsFrameView"><summary>Click to toggle frame canvas</summary>
                     <div id="frameView" title="Frame render canvas">
                         <canvas id="htmlFrameCanvas">Your browser does not support the HTML canvas element</canvas>
+                        <div id="frameLoad" title="Shows current decoding progress">
+                            <span id="frameLoadText">Loading...</span>
+                            <progress id="frameLoadProgress"></progress>
+                        </div>
                         <div id="frameViewButtons">
                             <input type="button" id="frameFullWindow" data-toggle="0" title="Toggle canvas fullscreen window" value="⤢">
                             <input type="button" id="frameFitWindow" data-toggle="0" title="Toggle between fit to window (🞕) and actual size (🞑)" value="🞕">
                             <input type="button" id="frameImgSmoothing" data-toggle="0" title="Toggle between pixelated (🙾) and smooth (🙼) image rendering" value="🙾">
                         </div>
                         <span id="frameFPS" title="Shows FPS for frame canvas (not related to GIF speed)">fps -</span>
-                        <div id="frameLoad" title="Shows current decoding progress">
-                            <p id="frameLoadText">Loading...</p>
-                            <progress id="frameLoadProgress"></progress>
-                        </div>
                     </div>
                 </details>
                 <details id="detailsFrameInfo"><summary>Click to toggle contents</summary>

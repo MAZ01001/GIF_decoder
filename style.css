@@ -145,7 +145,7 @@ div#box{
     position: absolute;
     top: 50%;
     left: 50%;
-    transform: translate(-50%, -50%) perspective(0);
+    translate: -50% -50%;
     width: max-content;
     height: max-content;
     padding: 0 .5rem 1rem .5rem;
@@ -199,10 +199,7 @@ div#frameView{
     overflow: hidden;
     user-select: none;
     /*~ make this element a containing block for the absolute positioning of the view buttons below */
-    /*// transform: translateZ(0); */
     position: relative;
-    /*~ a trick to get less smoothing when not having a pixel perfect position/size (avoid subpixel aliasing) */
-    perspective: 0;
 }
 div#gifView.full,
 div#frameView.full{
@@ -239,7 +236,7 @@ canvas#htmlFrameCanvas{
     width: calc(100% - .5rem);
     height: calc(100% - .5rem);
     margin: auto;
-    transform: translate(-50%, -50%);
+    translate: -50% -50%;
     position: absolute;
     top: 50%;
     left: 50%;
@@ -279,15 +276,19 @@ span#frameFPS{
 div#gifLoad,
 div#frameLoad{
     position: absolute;
-    transform: translate(-50%,-50%);
+    translate: -50% -50%;
     top: 50%;
     left: 50%;
     width: 80%;
+    padding: 50%;
     display: flex;
+    gap: .5rem;
     flex-direction: column;
     align-items: safe center;
     place-content: safe center;
 }
+div#gifLoad{background: radial-gradient(ellipse 16rem 8rem at center,#000c,#0007 50%,transparent 100%);}
+div#frameLoad{background: radial-gradient(ellipse 13rem 7rem at center,#000c,#0007 50%,transparent 100%);}
 div#gifLoad.done,
 div#frameLoad.done{
     visibility: hidden;
@@ -295,9 +296,8 @@ div#frameLoad.done{
     transition: opacity 300ms ease-in,
         visibility 300ms;
 }
-p#gifLoadText,
-p#frameLoadText{
-    margin-block: .5rem;
+span#gifLoadText,
+span#frameLoadText{
     color: #0f0;
     font: x-large "consolas", monospace;
     text-shadow: 0 0 4px #000,
@@ -311,6 +311,14 @@ progress#frameLoadProgress{
     width: 100%;
     height: 2rem;
 }
+div#gifLoad>div{
+    place-self: stretch;
+    display: flex;
+    gap: 1rem;
+    align-items: safe center;
+    justify-content: space-evenly;
+}
+input#gifLoadPause,
 input#gifLoadAbort{
     font-size: large;
     padding: .2rem .3rem;

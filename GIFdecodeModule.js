@@ -1,5 +1,82 @@
 //@ts-check
 "use strict";//~ counts for the whole file
+/**@class@template {unknown} T*/
+export const Interrupt=class Interrupt{
+    /**
+     * @typedef {Object} InterruptSignal
+     * @property {(timeout?:number)=>Promise<boolean>} check - see docs within {@linkcode Interrupt}
+     * @property {AbortSignal} signal - see docs within {@linkcode Interrupt}
+     */
+    static #InterruptSignal=class InterruptSignal{
+        #ref;
+        /**
+         * ## Create an {@linkcode AbortSignal} that will abort when {@linkcode Interrupt.abort} is called
+         * when aborted, {@linkcode AbortSignal.reason} will be a reference to `this` {@linkcode InterruptSignal} object\
+         * ! NOT influenced by {@linkcode Interrupt.pause}
+         */
+        get signal(){return this.#ref.#controller.signal;}
+        /**
+         * ## Create a new interrupt signal
+         * can not modify signal, only read
+         * @param {Interrupt} ref - reference to corresponding {@linkcode Interrupt} object
+         * @throws {TypeError} when {@linkcode ref} is not an {@linkcode Interrupt} reference
+         */
+        constructor(ref){
+            if(!(ref instanceof Interrupt))throw new TypeError("[InterruptSignal] ref is not an Interrupt reference.");
+            this.#ref=ref;
+        }
+        /**
+         * ## Check if signal was aborted
+         * return delayed until signal is unpaused
+         * @param {number} [timeout] - time in milliseconds for delay between pause-checks - default `0`
+         * @returns {Promise<boolean>} when signal is aborted `true` otherwise `false`
+         * @throws {TypeError} when {@linkcode timeout} is given but not a positive finite number
+         */
+        async check(timeout){
+            if(timeout!=null&&(typeof timeout!=="number"||!Number.isFinite(timeout)||timeout<0))throw TypeError("[InterruptSignal] timeout is not a positive finite number.");
+            const delay=timeout??0;
+            for(;this.#ref.#paused;)await new Promise(E=>setTimeout(E,delay));
+            return this.#ref.#aborted;
+        }
+        static{//~ make class and prototype immutable
+            Object.freeze(InterruptSignal.prototype);
+            Object.freeze(InterruptSignal);
+        }
+    };
+    /**
+     * ## Check if {@linkcode obj} is an interrupt signal (instance)
+     * @param {unknown} obj
+     * @returns {boolean} gives `true` when it is an interrupt signal and `false` otherwise
+     */
+    static isSignal(obj){return obj instanceof Interrupt.#InterruptSignal;}
+    #paused=false;
+    #aborted=false;
+    #controller=new AbortController();
+    #signal=new Interrupt.#InterruptSignal(this);
+    /**@type {T|undefined}*/
+    #reason=undefined;
+    /**## get a signal for (only) checking for an abort*/
+    get signal(){return this.#signal;}
+    /**## get the reason for abort (`undefined` before abort)*/
+    get reason(){return this.#reason;}
+    /**## Pause signal*/
+    pause(){this.#paused=true;}
+    /**## Unpause signal*/
+    resume(){this.#paused=false;}
+    /**
+     * ## Abort signal
+     * @param {T} [reason] - reason for abort
+     */
+    abort(reason){
+        this.#reason=reason;
+        this.#aborted=true;
+        this.#controller.abort(this.#signal);
+    }
+    static{//~ make class and prototype immutable
+        Object.freeze(Interrupt.prototype);
+        Object.freeze(Interrupt);
+    }
+};
 /**
  * @typedef {Object} GIF
  * @property {number} width the width of the image in pixels (logical screen size)
@@ -58,11 +135,11 @@ export const DisposalMethod=Object.freeze({
 /**
  * ## Decodes a GIF into its components for rendering on a canvas
  * @param {string} gifURL - the URL of a GIF file
- * @param {AbortSignal} abortSignal - aboard fetching/parsing with this (via {@linkcode AbortController})
+ * @param {InterruptSignal} interruptSignal - pause/aboard fetching/parsing with this (via {@linkcode Interrupt})
  * @param {(byteLength:number)=>(Promise<boolean>|boolean)} [sizeCheck] - Optional check if the loaded file should be processed if this yields `false` then it will reject with `file to large`
- * @param {(percentageRead:number,frameIndex:number,frame:ImageData,framePos:[number,number],gifSize:[number,number])=>any} [progressCallback] - Optional callback for showing progress of decoding process (when GIF is interlaced calls after each pass (4x on the same frame)) - if asynchronous, it waits for it to resolve before continuing decoding
+ * @param {(percentageRead:number,frameIndex:number,frame:ImageData,framePos:[number,number],gifSize:[number,number])=>any} [progressCallback] - Optional callback for showing progress of decoding process (each frame) - if asynchronous, it waits for it to resolve before continuing decoding
  * @returns {Promise<GIF>} the GIF with each frame decoded separately - may reject (throw) for the following reasons
- * - {@linkcode AbortSignal.reason} of {@linkcode abortSignal} when it triggers
+ * - {@linkcode interruptSignal} reference, when it triggers
  * - fetch errors when trying to fetch the GIF from {@linkcode gifURL}:
  * - - `fetch error: network error`
  * - - `fetch error (connecting)` any unknown error during {@linkcode fetch}
@@ -78,14 +155,14 @@ export const DisposalMethod=Object.freeze({
  * - - `undefined block found`
  * - - `reading out of range` (unexpected end of file during decoding)
  * - - `unknown error`
- * @throws {TypeError} if {@linkcode gifURL} is not a string; {@linkcode abortSignal} is not an abort signal; or {@linkcode sizeCheck} or {@linkcode progressCallback} are given but aren't functions
+ * @throws {TypeError} if {@linkcode gifURL} is not a string; {@linkcode interruptSignal} is not an interrupt signal; or {@linkcode sizeCheck} or {@linkcode progressCallback} are given but aren't functions
  */
-export const decodeGIF=async(gifURL,abortSignal,sizeCheck,progressCallback)=>{
-    if(typeof gifURL!=="string")throw new TypeError("[decodeGIF] gifURL is not a string");
-    if(!(abortSignal instanceof AbortSignal))throw new TypeError("[decodeGIF] abortSignal is not an abort signal");
-    if(sizeCheck!=null&&typeof sizeCheck!=="function")throw new TypeError("[decodeGIF] sizeCheck is not a function");
-    if(progressCallback!=null&&typeof progressCallback!=="function")throw new TypeError("[decodeGIF] progressCallback is not a function");
-    if(abortSignal.aborted)throw abortSignal.reason;
+export const decodeGIF=async(gifURL,interruptSignal,sizeCheck,progressCallback)=>{
+    if(typeof gifURL!=="string")throw new TypeError("[decodeGIF] gifURL is not a string.");
+    if(!Interrupt.isSignal(interruptSignal))throw new TypeError("[decodeGIF] interruptSignal is not an interrupt signal.");
+    if(sizeCheck!=null&&typeof sizeCheck!=="function")throw new TypeError("[decodeGIF] sizeCheck is not a function.");
+    if(progressCallback!=null&&typeof progressCallback!=="function")throw new TypeError("[decodeGIF] progressCallback is not a function.");
+    if(await interruptSignal.check())throw interruptSignal;
     /**
      * @typedef {Object} ByteStream
      * @property {number} pos current position in `data`
@@ -144,7 +221,7 @@ export const decodeGIF=async(gifURL,abortSignal,sizeCheck,progressCallback)=>{
      * - undefined block found
      * - unknown error
      * @throws {RangeError} if {@linkcode byteStream} throws for out of bounds reading
-     * @throws {typeof abortSignal} if {@linkcode abortSignal} triggered
+     * @throws {typeof interruptSignal} if {@linkcode interruptSignal} triggered
      */
     const parseBlock=async(byteStream,gif,getFrameIndex,getLastBlock)=>{
         switch(byteStream.nextByte()){
@@ -176,12 +253,13 @@ export const decodeGIF=async(gifURL,abortSignal,sizeCheck,progressCallback)=>{
                 if(localColorTableFlag)frame.localColorTable=parseColorTable(byteStream,localColorCount);
                 //~ decode frame image data (GIF-LZW) - image data
                 /**
-                 * #### Get color from color tables (transparent if index is equal to the transparency index)
+                 * #### Get color from color tables (transparent if {@linkcode index} is equal to the transparency index)
+                 * uses local color table and fallback to global color table if {@linkcode index} is out of range or no local color table is present
                  * @param {number} index - index into global/local color table
                  * @returns {[number,number,number,number]} RGBA color value
                  */
                 const getColor=index=>{
-                    const[R,G,B]=(localColorTableFlag?frame.localColorTable:gif.globalColorTable)[index];
+                    const[R,G,B]=localColorTableFlag&&index<frame.localColorTable.length?frame.localColorTable[index]:gif.globalColorTable[index];
                     return[R,G,B,index===frame.transparentColorIndex?0:255];
                 }
                 const image=(()=>{
@@ -207,34 +285,48 @@ export const decodeGIF=async(gifURL,abortSignal,sizeCheck,progressCallback)=>{
                     return((imageData[bytePos]+(imageData[bytePos+1]<<8)+(imageData[bytePos+2]<<16))&(((1<<len)-1)<<bitPos))>>>bitPos;
                 };
                 if(interlacedFlag){
-                    for(let code=0,size=minCodeSize+1,pos=0,dic=[[0]],pass=0;pass<4;++pass){
-                        if(InterlaceOffsets[pass]<frame.height)
-                            for(let pixelPos=0,lineIndex=0;true;){
-                                const last=code;
-                                code=readBits(pos,size);
-                                pos+=size+1;
-                                if(code===clearCode){
-                                    size=minCodeSize+1;
-                                    dic.length=clearCode+2;
-                                    for(let i=0;i<dic.length;++i)dic[i]=i<clearCode?[i]:[];
-                                }else{
-                                    if(code>=dic.length)dic.push(dic[last].concat(dic[last][0]));
-                                    else if(last!==clearCode)dic.push(dic[last].concat(dic[code][0]));
-                                    for(let i=0;i<dic[code].length;++i){
-                                        image.data.set(getColor(dic[code][i]),InterlaceOffsets[pass]*frame.width+InterlaceSteps[pass]*lineIndex+(pixelPos%(frame.width*4)));
-                                        pixelPos+=4;
+                    for(let code=0,size=minCodeSize+1,pos=0,dic=[[0]],pixelPos=0,lineIndex=0,pass=0;pass<4;){
+                        if(InterlaceOffsets[pass]>=frame.height){
+                            ++pass;
+                            pixelPos=0;
+                            lineIndex=0;
+                            continue;
+                        }
+                        const last=code;
+                        code=readBits(pos,size);
+                        pos+=size;
+                        if(code===clearCode){
+                            size=minCodeSize+1;
+                            dic.length=clearCode+2;
+                            for(let i=0;i<dic.length;++i)dic[i]=i<clearCode?[i]:[];
+                        }else{
+                            //~ clear code +1 = end of information code
+                            if(code===clearCode+1)break;
+                            if(code>=dic.length)dic.push(dic[last].concat(dic[last][0]));
+                            else if(last!==clearCode)dic.push(dic[last].concat(dic[code][0]));
+                            for(let i=0;i<dic[code].length;++i){
+                                image.data.set(getColor(dic[code][i]),frame.width*4*(InterlaceOffsets[pass]+lineIndex*InterlaceSteps[pass])+pixelPos);
+                                if((pixelPos+=4)>=frame.width*4){
+                                    pixelPos%=frame.width*4;
+                                    if(InterlaceOffsets[pass]+InterlaceSteps[pass]*++lineIndex>=frame.height){
+                                        //// await progressCallback?.((byteStream.pos+1+pos/8-imageData.length)/byteStream.data.length,getFrameIndex(),image,[frame.left,frame.top],[gif.width,gif.height]);
+                                        ++pass;
+                                        pixelPos=0;
+                                        lineIndex=0;
                                     }
-                                    if(dic.length===(1<<size)&&size<12)++size;
-                                }
-                                if(pixelPos===frame.width*4*(lineIndex+1)){
-                                    ++lineIndex;
-                                    if(InterlaceOffsets[pass]+InterlaceSteps[pass]*lineIndex>=frame.height)break;
                                 }
                             }
-                        await progressCallback?.((byteStream.pos+1)/byteStream.data.length,getFrameIndex(),image,[frame.left,frame.top],[gif.width,gif.height]);
-                        if(abortSignal.aborted)throw abortSignal;
+                            if(dic.length>=(1<<size)&&size<12)++size;
+                        }
+                        if(InterlaceOffsets[pass]+InterlaceSteps[pass]*lineIndex>=frame.height){
+                            //// await progressCallback?.((byteStream.pos+1+pos/8-imageData.length)/byteStream.data.length,getFrameIndex(),image,[frame.left,frame.top],[gif.width,gif.height]);
+                            ++pass;
+                            pixelPos=0;
+                            lineIndex=0;
+                        }
+                        if(await interruptSignal.check())throw interruptSignal;
                     }
-                    frame.image=image;
+                    await progressCallback?.((byteStream.pos+1)/byteStream.data.length,getFrameIndex(),frame.image=image,[frame.left,frame.top],[gif.width,gif.height]);
                 }else{
                     for(let code=0,size=minCodeSize+1,pos=0,dic=[[0]],pixelPos=-4;true;){
                         const last=code;
@@ -254,7 +346,7 @@ export const decodeGIF=async(gifURL,abortSignal,sizeCheck,progressCallback)=>{
                         }
                     }
                     await progressCallback?.((byteStream.pos+1)/byteStream.data.length,getFrameIndex(),frame.image=image,[frame.left,frame.top],[gif.width,gif.height]);
-                    if(abortSignal.aborted)throw abortSignal;
+                    if(await interruptSignal.check())throw interruptSignal;
                 }
                 getLastBlock(`frame [${getFrameIndex()}]`);
             break;
@@ -345,18 +437,15 @@ export const decodeGIF=async(gifURL,abortSignal,sizeCheck,progressCallback)=>{
         }
         return false;
     }
-    const abortWrapper=new AbortController();
-    if(abortSignal.aborted)abortWrapper.abort(abortWrapper);
-    else abortSignal.addEventListener("abort",()=>abortWrapper.abort(abortWrapper),{passive:true,once:true,signal:abortWrapper.signal});
-    const response=await fetch(gifURL,{credentials:"omit",referrer:"",signal:abortWrapper.signal}).catch(err=>{
-        if(err===abortWrapper)throw abortSignal.reason;
+    const response=await fetch(gifURL,{credentials:"omit",referrer:"",signal:interruptSignal.signal}).catch(err=>{
+        if(err===interruptSignal)throw interruptSignal;
         if(err instanceof TypeError)throw"fetch error: network error";
         throw"fetch error (connecting)";
     });
     if(response.redirected)console.info("Got redirected to: %s",response.url);
     if(!response.ok)throw`fetch error: recieved ${response.status}`;
     const raw=await response.arrayBuffer().catch(err=>{
-        if(err instanceof DOMException&&err.name==="AbortError")throw abortSignal.reason;
+        if(err instanceof DOMException&&err.name==="AbortError")throw interruptSignal;
         if(err instanceof TypeError)throw"fetch error: could not read resource";
         if(err instanceof RangeError)throw"fetch error: resource to large";
         throw"fetch error (reading)";
@@ -368,16 +457,15 @@ export const decodeGIF=async(gifURL,abortSignal,sizeCheck,progressCallback)=>{
         pos:0,
         data:new Uint8ClampedArray(raw),
         nextByte(){
-            if(this.pos+1>=this.len)throw RangeError("reading out of range");
+            if(this.pos>=this.len)throw new RangeError("reading out of range");
             return this.data[this.pos++];
         },
         nextTwoBytes(){
-            if(this.pos>=this.len)throw RangeError("reading out of range");
-            this.pos+=2;
+            if((this.pos+=2)>this.len)throw new RangeError("reading out of range");
             return this.data[this.pos-2]+(this.data[this.pos-1]<<8);
         },
         getString(count){
-            if(this.pos+count>=this.len)throw RangeError("reading out of range");
+            if(this.pos+count>this.len)throw new RangeError("reading out of range");
             let s="";
             for(;--count>=0;s+=String.fromCharCode(this.data[this.pos++]));
             return s;
@@ -385,8 +473,8 @@ export const decodeGIF=async(gifURL,abortSignal,sizeCheck,progressCallback)=>{
         readSubBlocks(){
             let blockString="",size=0;
             do{
-                size=this.data[this.pos++];
-                if(this.pos+size>this.len)throw RangeError("reading out of range");
+                size=this.data[this.pos];
+                if((this.pos++)+size>this.len)throw new RangeError("reading out of range");
                 for(let count=size;--count>=0;blockString+=String.fromCharCode(this.data[this.pos++]));
             }while(size!==0);
             return blockString;
@@ -394,7 +482,7 @@ export const decodeGIF=async(gifURL,abortSignal,sizeCheck,progressCallback)=>{
         readSubBlocksBin(){
             let size=0,len=0;
             for(let offset=0;(size=this.data[this.pos+offset])!==0;offset+=size+1){
-                if(this.pos+offset>=this.len)throw RangeError("reading out of range");
+                if(this.pos+offset>this.len)throw new RangeError("reading out of range");
                 len+=size;
             }
             const blockData=new Uint8Array(len);
@@ -404,10 +492,10 @@ export const decodeGIF=async(gifURL,abortSignal,sizeCheck,progressCallback)=>{
         },
         skipSubBlocks(){
             for(;this.data[this.pos]!==0;this.pos+=this.data[this.pos]+1);
-            if(++this.pos>=this.len)throw RangeError("reading out of range");
+            if(++this.pos>this.len)throw new RangeError("reading out of range");
         }
     });
-    if(abortSignal.aborted)throw abortSignal.reason;
+    if(await interruptSignal.check())throw interruptSignal;
     //? https://www.w3.org/Graphics/GIF/spec-gif89a.txt
     //? https://www.matthewflickinger.com/lab/whatsinagif/bits_and_bytes.asp
     //~ load stream and start decoding
@@ -474,7 +562,7 @@ export const decodeGIF=async(gifURL,abortSignal,sizeCheck,progressCallback)=>{
     };
     try{
         do{
-            if(abortSignal.aborted)throw abortSignal;
+            if(await interruptSignal.check())throw interruptSignal;
             if(incrementFrameIndex){
                 gif.frames.push({
                     left:0,
@@ -506,7 +594,7 @@ export const decodeGIF=async(gifURL,abortSignal,sizeCheck,progressCallback)=>{
             gif.totalTime+=frame.delayTime;
         }
         return gif;
-    }catch(err){throw err===abortSignal?abortSignal.reason:`error while parsing frame [${frameIndex}] "${err instanceof EvalError||err instanceof RangeError?err.message:"unknown error"}"`;}
+    }catch(err){throw err===interruptSignal?interruptSignal:`error while parsing frame [${frameIndex}] "${(err instanceof EvalError)||(err instanceof RangeError)?err.message:"unknown error"}"`;}
 };
 /**
  * ## Extract the animation loop amount from a {@linkcode GIF}

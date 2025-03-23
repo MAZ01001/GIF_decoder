@@ -7,6 +7,7 @@
 //~ | | __  | | |  _|    / _` |/ _ \/ __/ _ \ / _` |/ _ \
 //~ | |_\ \_| |_| |     | (_| |  __/ (_| (_) | (_| |  __/
 //~  \____/\___/\_|      \__,_|\___|\___\___/ \__,_|\___|
+//MARK: GIF decode
 
 // TODO ? test if corrupted files throw errors ~ like color index out of range...
 // TODO ~ build single class with all features; for ease of use (make import-able from anywhere and replace GIFdecodeModule.js with new GIF.js and remove here)
@@ -540,6 +541,7 @@ const getGIFLoopAmount=gif=>{
 //~ |  _  | | | | |\/| || |     |  __|| |/ _ \ '_ ` _ \ / _ \ '_ \| __/ __|
 //~ | | | | | | | |  | || |____ | |___| |  __/ | | | | |  __/ | | | |_\__ \
 //~ \_| |_/ \_/ \_|  |_/\_____/ \____/|_|\___|_| |_| |_|\___|_| |_|\__|___/
+//MARK: HTML Elements
 
 /** HTML elements in DOM */
 const html=Object.freeze({
@@ -848,6 +850,7 @@ if(html.frame.canvas==null)throw new Error("[GIF decoder] Couldn't get frame can
 //~  \____/\___/|_| |_|_| |_|_|  |_| |_| |_| |___/ |_|\__,_|_|\___/ \__, |
 //~                                                                  __/ |
 //~                                                                 |___/
+//MARK: Confirm Dialog
 
 const confirmDialog=Object.seal(new class ConfirmDialog{
     /** @type {((aborted:boolean)=>Promise<void>|void)|null} [Private] Current callback when dialog is closed (can be async) */
@@ -930,6 +933,7 @@ const confirmDialog=Object.seal(new class ConfirmDialog{
 //~  \___/\_| \_\_____/ \_| |_/_|  \__, |\__,_|_| |_| |_|\___|_| |_|\__|___/
 //~                                 __/ |
 //~                                |___/
+//MARK: URL Arguments
 
 /**
  * URL parameters
@@ -1004,6 +1008,7 @@ const urlParam=(()=>{
 //~ | | __| |/ _ \| '_ \ / _` | / __|
 //~ | |_\ \ | (_) | |_) | (_| | \__ \
 //~  \____/_|\___/|_.__/ \__,_|_|___/
+//MARK: Globals
 
 /** Global variables (sealed object) */
 const global=Object.seal({
@@ -1135,6 +1140,7 @@ if((global.undisposedCanvas=global.undisposedCanvasObj.getContext("2d"))==null)t
 //~  \___/ \__|_|_|_|\__|\__, | |_|  \__,_|_| |_|\___|\__|_|\___/|_| |_|___/
 //~                       __/ |
 //~                      |___/
+//MARK: Utility functions
 
 /**
  * ## Copy value to clipboard and show popup note
@@ -1471,6 +1477,7 @@ const updateTimeInfo=()=>{
 //~ \____/ \___|\__|\__,_| .__/
 //~                      | |
 //~                      |_|
+//MARK: Setup
 
 global.undisposedCanvas.imageSmoothingEnabled=(global.textCanvas.imageSmoothingEnabled=(html.frame.canvas.imageSmoothingEnabled=(html.view.canvas.imageSmoothingEnabled=false)));
 global.undisposedCanvas.globalCompositeOperation="copy";//~ default "source-over"
@@ -1529,6 +1536,7 @@ html.frame.text.background.addEventListener("click",copyHexColorToClipboard,{pas
 //~ | | | | |/ _ \ \ /\ / /  / __/ _ \| '_ \| __| '__/ _ \| / __|
 //~ \ \_/ / |  __/\ V  V /  | (_| (_) | | | | |_| | | (_) | \__ \
 //~  \___/|_|\___| \_/\_/    \___\___/|_| |_|\__|_|  \___/|_|___/
+//MARK: View controls
 
 //~ view buttons full-window mode / fit to window (or pan & zoom controls) / img smoothing
 
@@ -1750,6 +1758,7 @@ html.frame.view.addEventListener("wheel",ev=>{
 //~  \___/_| |_| |_| .__/ \___/|_|   \__|  \___| \_/ \___|_| |_|\__|___/
 //~                | |
 //~                |_|
+//MARK: Import events
 
 html.open.addEventListener("click",()=>html.import.menu.showModal(),{passive:true});
 
@@ -1982,6 +1991,7 @@ html.import.confirm.addEventListener("click",async()=>{
 //~ \_|   |_|\__,_|\__, |_.__/ \__,_|\___|_|\_\  \___\___/|_| |_|\__|_|  \___/|_|___/
 //~                 __/ |
 //~                |___/
+//MARK: Playback controls
 
 html.frameTime.frameRange.addEventListener("input",()=>{
     if(global.playback!==0)html.controls.pause.click();
@@ -2095,6 +2105,7 @@ html.loop.toggle.addEventListener("click",()=>{
 //~ |  __/ '__/ _ \ |    // _ \ '_ \ / _` |/ _ \ '__| |  _| '__/ _` | '_ ` _ \ / _ \/ __|
 //~ | |  | | |  __/ | |\ \  __/ | | | (_| |  __/ |    | | | | | (_| | | | | | |  __/\__ \
 //~ \_|  |_|  \___| \_| \_\___|_| |_|\__,_|\___|_|    \_| |_|  \__,_|_| |_| |_|\___||___/
+//MARK: Pre Render Frames
 
 html.override.framesRender.addEventListener("click",()=>{
     blockInput(true);
@@ -2112,6 +2123,7 @@ html.override.framesRender.addEventListener("click",()=>{
 //~ | | __  | | |  _|   | '__/ _ \ '_ \ / _` |/ _ \ '__|
 //~ | |_\ \_| |_| |     | | |  __/ | | | (_| |  __/ |
 //~  \____/\___/\_|     |_|  \___|_| |_|\__,_|\___|_|
+//MARK: GIF render
 
 //~ load URL parameters
 (async()=>{

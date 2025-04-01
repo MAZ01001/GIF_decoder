@@ -80,11 +80,13 @@ const Interrupt=class Interrupt{
     resume(){this.#paused=false;}
     /**
      * ## Abort signal
+     * also unpauses signal
      * @param {T} [reason] - reason for abort
      */
     abort(reason){
         this.#reason=reason;
         this.#aborted=true;
+        this.#paused=false;
         this.#controller.abort(this.#signal);
     }
     static{//~ make class and prototype immutable
@@ -959,6 +961,8 @@ const confirmDialog=Object.seal(new class ConfirmDialog{
     static _abort_;
     /** @type {boolean} [Private] If a dialog is currently still pending (can't open another one) */
     static _running_=false;
+    /** @type {AbortController} [Private] abort controller to remove (all) event listeners (one way) */
+    static _listenerController_=new AbortController();
     /** @type {boolean} If a dialog is currently still pending (can't open another one) */
     get Running(){return ConfirmDialog._running_;}
     /**
@@ -973,9 +977,9 @@ const confirmDialog=Object.seal(new class ConfirmDialog{
         ConfirmDialog._dialog_=dialog;
         ConfirmDialog._confirm_=confirm;
         ConfirmDialog._abort_=abort;
-        ConfirmDialog._dialog_.addEventListener("cancel",async ev=>{ev.preventDefault();ConfirmDialog._abort_.click();},{passive:false});
-        ConfirmDialog._confirm_.addEventListener("click",async()=>ConfirmDialog._exit_(false),{passive:true});
-        ConfirmDialog._abort_.addEventListener("click",async()=>ConfirmDialog._exit_(true),{passive:true});
+        ConfirmDialog._dialog_.addEventListener("cancel",async ev=>{ev.preventDefault();ConfirmDialog._abort_.click();},{passive:false,signal:ConfirmDialog._listenerController_.signal});
+        ConfirmDialog._confirm_.addEventListener("click",async()=>ConfirmDialog._exit_(false),{passive:true,signal:ConfirmDialog._listenerController_.signal});
+        ConfirmDialog._abort_.addEventListener("click",async()=>ConfirmDialog._exit_(true),{passive:true,signal:ConfirmDialog._listenerController_.signal});
     }
     /**
      * ## [Private, async] Called by an event listener when the dialog was closed
@@ -1013,9 +1017,7 @@ const confirmDialog=Object.seal(new class ConfirmDialog{
         if(force==null||!force){
             if(ConfirmDialog._running_)throw new Error("[ConfirmDialog:setup] a dialog is still pending");
         }else await ConfirmDialog._exit_(true);
-        ConfirmDialog._dialog_.removeEventListener("cancel",async ev=>{ev.preventDefault();ConfirmDialog._abort_.click();});
-        ConfirmDialog._confirm_.removeEventListener("click",async()=>ConfirmDialog._exit_(false));
-        ConfirmDialog._abort_.removeEventListener("click",async()=>ConfirmDialog._exit_(true));
+        ConfirmDialog._listenerController_.abort();
     }
 }(html.confirm.menu,html.confirm.text,html.confirm.confirm,html.confirm.abort));
 
@@ -1268,28 +1270,18 @@ const copyToClipboard=txt=>{
  */
 const silentImportGIF=async url=>{
     blockInput(true);
+    const listenerController=new AbortController();
     if(await new Promise(E=>{
-        /** @param {boolean} success */
-        const R=success=>{
-            html.root.removeEventListener("loadpreview",()=>R(true));
-            html.root.removeEventListener("loadcancel",()=>R(false));
-            E(success);
-        };
-        html.root.addEventListener("loadpreview",()=>R(true),{passive:true,once:true});
-        html.root.addEventListener("loadcancel",()=>R(false),{passive:true,once:true});
+        html.root.addEventListener("loadpreview",()=>E(true),{passive:true,signal:listenerController.signal});
+        html.root.addEventListener("loadcancel",()=>E(false),{passive:true,signal:listenerController.signal});
         html.import.url.value=url;
         html.import.url.dispatchEvent(new InputEvent("change"));
     }))return await new Promise(E=>{
-        /** @param {boolean} success */
-        const R=success=>{
-            html.root.removeEventListener("loadend",()=>R(true));
-            html.root.removeEventListener("loaderror",()=>R(false));
-            E(success);
-        };
-        html.root.addEventListener("loadend",()=>R(true),{passive:true,once:true});
-        html.root.addEventListener("loaderror",()=>R(false),{passive:true,once:true});
+        html.root.addEventListener("loadend",()=>E(true),{passive:true,signal:listenerController.signal});
+        html.root.addEventListener("loaderror",()=>E(false),{passive:true,signal:listenerController.signal});
         html.import.confirm.click();
-    });
+    }).finally(()=>listenerController.abort());
+    listenerController.abort();
     html.import.menu.showModal();
     if(global.gifDecode==null)html.open.disabled=false;
     else blockInput(false);
@@ -1864,17 +1856,12 @@ html.import.url.addEventListener("change",async()=>{
             if(!url.startsWith("data:image/"))return null;
             if(!/^data:image\/gif[;,]/.test(url))return false;
         }
-        return await new Promise(/**@param {(value:boolean|null)=>void} E*/E=>{
-            /** @param {boolean} success */
-            const R=success=>{
-                html.import.preview.removeEventListener("load",()=>R(true));
-                html.import.preview.removeEventListener("error",()=>R(false));
-                E(success?true:null);
-            };
-            html.import.preview.addEventListener("load",()=>R(true),{passive:true,once:true});
-            html.import.preview.addEventListener("error",()=>R(false),{passive:true,once:true});
+        const listenerController=new AbortController();
+        return await new Promise(/**@param {(value:true|null)=>void} E*/E=>{
+            html.import.preview.addEventListener("load",()=>E(true),{passive:true,signal:listenerController.signal});
+            html.import.preview.addEventListener("error",()=>E(null),{passive:true,signal:listenerController.signal});
             html.import.preview.src=url;
-        });
+        }).finally(()=>listenerController.abort());
     })(html.import.url.value);
     if(!(check??false))html.import.preview.src="";
     html.import.warn.textContent=check==null?"Given URL does not lead to an image":(check?"":"Given URL does not lead to a GIF image");
@@ -1894,7 +1881,7 @@ html.import.file.addEventListener("change",async()=>{
         html.root.dispatchEvent(new CustomEvent("loadcancel"));
         return;
     }
-    const version=await html.import.file.files[0].slice(0,6).text().then(null,reason=>{return{reason};}).catch(reason=>{return{reason};});
+    const version=await html.import.file.files[0].slice(0,6).text().catch(reason=>({reason}));
     if(typeof version==="object"){
         html.import.warn.textContent=`Error reading file: ${version.reason}`;
         html.root.dispatchEvent(new CustomEvent("loadcancel"));
@@ -1935,6 +1922,7 @@ html.import.confirm.addEventListener("click",async()=>{
     html.loading.frameText.textContent="Loading...";
     const interrupt=new Interrupt();
     html.loading.abort.addEventListener("click",()=>interrupt.abort("aborted by user"),{passive:true,once:true,signal:interrupt.signal.signal});
+    html.loading.pause.dataset.toggle="0";
     html.loading.pause.addEventListener("click",()=>{
         if(html.loading.pause.dataset.toggle==="0"){
             html.loading.pause.dataset.toggle="1";
@@ -2245,9 +2233,19 @@ html.override.framesRender.addEventListener("click",()=>{
     }
     //~ open import menu if no url was given
     if(urlParam.url==null){
-        html.open.disabled=false;
         html.import.menu.showModal();
+        html.open.disabled=false;
         html.import.abort.focus();
+        const controller=new AbortController();
+        html.root.addEventListener("loadcancel",()=>controller.abort(),{passive:true,signal:controller.signal});
+        html.root.addEventListener("loadpreview",()=>{
+            html.import.confirm.focus();
+            controller.abort();
+        },{passive:true,signal:controller.signal});
+        html.import.url.value="https://upload.wikimedia.org/wikipedia/commons/a/a2/Wax_fire.gif";
+        html.import.url.dispatchEvent(new InputEvent("change"));
+        //~ timeout (focusing confirm button) when GIF couldn't be loaded within 1sec
+        setTimeout(()=>controller.abort(),1000);
         return;
     }
     //~ load GIF

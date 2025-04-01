@@ -183,7 +183,7 @@ declare class Interrupt<T> {
     get signal: InterruptSignal;
     /** ## get the reason for abort (`undefined` before abort) */
     get reason?: T;
-    /** ## Pause signal */
+    /** ## Pause signal (when not aborted) */
     pause(): void;
     /** ## Unpause signal */
     resume(): void;

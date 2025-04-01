@@ -145,12 +145,10 @@ new Promise(async() => {
 );
 
 interrupt.pause();
+// interrupt.resume();
 
-// ↓ provided AbortSignal aborts immediately
+// ↓ provided AbortSignal aborts immediately (unpauses automatically)
 interrupt.abort("ERROR");
-
-// ↓ only registers `abort` (with `check`) when unpaused
-interrupt.resume();
 ```
 
 </details>
@@ -191,6 +189,7 @@ declare class Interrupt<T> {
     resume(): void;
     /**
      * ## Abort signal
+     * also unpauses signal
      * @param {T} [reason] - reason for abort
      */
     abort(reason?: T): void;

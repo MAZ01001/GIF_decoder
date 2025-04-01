@@ -65,11 +65,13 @@ export const Interrupt=class Interrupt{
     resume(){this.#paused=false;}
     /**
      * ## Abort signal
+     * also unpauses signal
      * @param {T} [reason] - reason for abort
      */
     abort(reason){
         this.#reason=reason;
         this.#aborted=true;
+        this.#paused=false;
         this.#controller.abort(this.#signal);
     }
     static{//~ make class and prototype immutable

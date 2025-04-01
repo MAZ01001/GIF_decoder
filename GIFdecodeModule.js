@@ -59,8 +59,8 @@ export const Interrupt=class Interrupt{
     get signal(){return this.#signal;}
     /**## get the reason for abort (`undefined` before abort)*/
     get reason(){return this.#reason;}
-    /**## Pause signal*/
-    pause(){this.#paused=true;}
+    /**## Pause signal (when not aborted)*/
+    pause(){this.#paused=!this.#aborted;}
     /**## Unpause signal*/
     resume(){this.#paused=false;}
     /**

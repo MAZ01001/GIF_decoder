@@ -808,7 +808,7 @@ const html=Object.freeze({
         totalHeight:document.getElementById("totalHeight"),
         /** @type {HTMLTableCellElement} Shows the total number of frames of the GIF *///@ts-ignore element does exist in DOM
         totalFrames:document.getElementById("totalFrames"),
-        /** @type {HTMLTableCellElement} Shows the total time of the GIF (in milliseconds) *///@ts-ignore element does exist in DOM
+        /** @type {HTMLTableCellElement} Shows the total time of the GIF (in milliseconds) and average FPS *///@ts-ignore element does exist in DOM
         totalTime:document.getElementById("totalTime"),
         /** @type {HTMLTableCellElement} Shows the pixel ascpect ratio of the GIF (in format `w:h` ie. `1:1`) *///@ts-ignore element does exist in DOM
         pixelAspectRatio:document.getElementById("pixelAspectRatio"),
@@ -853,7 +853,7 @@ const html=Object.freeze({
         left:document.getElementById("frameLeft"),
         /** @type {HTMLSpanElement} Shows the position of the current frame from the top edge of the GIF (in pixels) *///@ts-ignore element does exist in DOM
         top:document.getElementById("frameTop"),
-        /** @type {HTMLTableCellElement} Shows the time in milliseconds this frame is displayed for *///@ts-ignore element does exist in DOM
+        /** @type {HTMLTableCellElement} Shows the time in milliseconds this frame is displayed for and theoretical FPS *///@ts-ignore element does exist in DOM
         time:document.getElementById("frameTime"),
         /** @type {HTMLInputElement} Disabled checkbox to show if this frame is waiting for user input *///@ts-ignore element does exist in DOM
         userInputFlag:document.getElementById("frameUserInputFlag"),
@@ -1497,7 +1497,7 @@ const updateFrameInfoAndTimers=()=>{
     html.frame.height.textContent=formatNumFixed(f.height);
     html.frame.left.textContent=formatNumFixed(f.left);
     html.frame.top.textContent=formatNumFixed(f.top);
-    html.frame.time.textContent=`${formatNumFixed(f.delayTime)} ms (≈ ${formatNumFixed(1000/f.delayTime,2)} fps)`;
+    html.frame.time.textContent=f.delayTime===0?"0 ms (infinite if waiting for user)":`${formatNumFixed(f.delayTime)} ms (≈ ${Number((1000/f.delayTime).toFixed(2))} fps)`;
     html.frame.userInputFlag.checked=f.userInputDelayFlag;
     html.frame.transparentColorIndex.textContent=f.transparentColorIndex==null?"-":String(f.transparentColorIndex);
     html.frame.disposalMethod.replaceChildren(...(()=>{switch(f.disposalMethod){
@@ -1972,7 +1972,7 @@ html.import.confirm.addEventListener("click",async()=>{
         html.info.totalWidth.textContent=formatNumFixed(gif.width);
         html.info.totalHeight.textContent=formatNumFixed(gif.height);
         html.info.totalFrames.textContent=formatNumFixed(gif.frames.length);
-        html.info.totalTime.textContent=gif.totalTime===Infinity?"Infinity (waits for user input)":`${formatNumFixed(gif.totalTime)} ms (≈ ${formatNumFixed((gif.frames.length*1000)/gif.totalTime,2)} fps)`;
+        html.info.totalTime.textContent=gif.totalTime===Infinity?"Infinity (waits for user input)":`${formatNumFixed(gif.totalTime)} ms (≈ ${Number(((gif.frames.length*1000)/gif.totalTime).toFixed(2))} fps)`;
         if(gif.pixelAspectRatio===0||gif.pixelAspectRatio===1)html.info.pixelAspectRatio.textContent="1:1 (square pixels)";
         else{
             const fracGCD=64/gcd(gif.pixelAspectRatio*64,64);

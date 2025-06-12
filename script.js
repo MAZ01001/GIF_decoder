@@ -2207,7 +2207,7 @@ html.override.framesRender.addEventListener("click",async()=>{
     // const frameBitmap=await createImageBitmap(cnv);//~ create bitmap from canvas
     //! add to bitmap list (with same index as frame list)
     // ------------------------------------------
-        //! use ImageBitmap (and delay/user input) for rendered frames instead of ImageData with disposition
+        //! use ImageBitmap (and delay/user input) for rendered frames instead of ImageData with disposal method
         // html.view.canvas.globalCompositeOperation="copy";//~ make next "draw" replace canvas
         // html.view.canvas.drawImage(bitmap,0,0);//~ "draw" bitmap of current frame
         // html.view.canvas.globalCompositeOperation="source-over";//~ restore default

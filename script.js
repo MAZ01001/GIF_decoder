@@ -1497,7 +1497,7 @@ const updateFrameInfoAndTimers=()=>{
     html.frame.height.textContent=formatNumFixed(f.height);
     html.frame.left.textContent=formatNumFixed(f.left);
     html.frame.top.textContent=formatNumFixed(f.top);
-    html.frame.time.textContent=`${formatNumFixed(f.delayTime)} ms`;
+    html.frame.time.textContent=`${formatNumFixed(f.delayTime)} ms (≈ ${formatNumFixed(1000/f.delayTime,2)} fps)`;
     html.frame.userInputFlag.checked=f.userInputDelayFlag;
     html.frame.transparentColorIndex.textContent=f.transparentColorIndex==null?"-":String(f.transparentColorIndex);
     html.frame.disposalMethod.replaceChildren(...(()=>{switch(f.disposalMethod){
@@ -1972,7 +1972,7 @@ html.import.confirm.addEventListener("click",async()=>{
         html.info.totalWidth.textContent=formatNumFixed(gif.width);
         html.info.totalHeight.textContent=formatNumFixed(gif.height);
         html.info.totalFrames.textContent=formatNumFixed(gif.frames.length);
-        html.info.totalTime.textContent=gif.totalTime===Infinity?"Infinity (waits for user input)":`${formatNumFixed(gif.totalTime)} ms`;
+        html.info.totalTime.textContent=gif.totalTime===Infinity?"Infinity (waits for user input)":`${formatNumFixed(gif.totalTime)} ms (≈ ${formatNumFixed((gif.frames.length*1000)/gif.totalTime,2)} fps)`;
         if(gif.pixelAspectRatio===0||gif.pixelAspectRatio===1)html.info.pixelAspectRatio.textContent="1:1 (square pixels)";
         else{
             const fracGCD=64/gcd(gif.pixelAspectRatio*64,64);

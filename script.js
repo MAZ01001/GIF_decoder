@@ -11,9 +11,10 @@
 
 // TODO add support for GIF87a
 // TODO ? test if corrupted files throw errors ~ like color index out of range...
-// TODO ~ build single class with all features; for ease of use (make import-able from anywhere and replace GIFdecodeModule.js with new GIF.js and remove here)
+// TODO ~ build single (GIFdecode) class with all features; for ease of use (make import-able from anywhere and replace GIFdecodeModule.js with new GIF.js and remove here)
 // TODO ? maybe add overrideInterlaced "do not decode interlaced frames" ! overrides decoding not rendering
 // TODO ? show interlace flags after decoding
+// TODO ! create separate (GIFloader) class (js module file) that only decodes GIF (from readable buffer) to bitmaps (with frame-pos/frame-time/frame-user-input/gif-loop-amount/gif-fps-estimate) for rendering to canvas and nothing else
 
 /**@class@template {unknown} T*/
 const Interrupt=class Interrupt{
@@ -1937,6 +1938,7 @@ html.import.confirm.addEventListener("click",async()=>{
     decodeGIF(
         fileSrc,
         interrupt.signal,
+        // TODO show GIF byteSize in warning/prompt (formatted)
         byteSize=>byteSize<10e6?true:new Promise(resolve=>confirmDialog.Setup("GIF is ≥ 10MB!\n(parsing may take very long)\ncontinue anyway?",aborted=>resolve(!aborted))),
         (percentageRead,frameIndex,frame,framePos,gifSize)=>{
             if(frameIndex===0){//~ only on first call
@@ -2191,10 +2193,25 @@ html.loop.toggle.addEventListener("click",()=>{
 //~ \_|  |_|  \___| \_| \_\___|_| |_|\__,_|\___|_|    \_| |_|  \__,_|_| |_| |_|\___||___/
 //MARK: Pre Render Frames
 
-html.override.framesRender.addEventListener("click",()=>{
+html.override.framesRender.addEventListener("click",async()=>{
     blockInput(true);
-    // TODO render and stores all frames from second loop (if more than one loop exist) ~ show loading bar and make process abortable
-    // ...
+    // TODO render and store all frames (from first loop) ~ show loading bar and make process abortable
+    // const cnv=new OffscreenCanvas(global.gifDecode.width,global.gifDecode.height);
+    // const ctx=cnv.getContext("2d");
+    // if(ctx==null){
+    //     blockInput(false);
+    //     throw new ReferenceError("couldn't create offscreen canvas for pre-rendering frames");
+    // }
+    //! render all frames
+    // ctx.drawImage();
+    // const frameBitmap=await createImageBitmap(cnv);//~ create bitmap from canvas
+    //! add to bitmap list (with same index as frame list)
+    // ------------------------------------------
+        //! use ImageBitmap (and delay/user input) for rendered frames instead of ImageData with disposition
+        // html.view.canvas.globalCompositeOperation="copy";//~ make next "draw" replace canvas
+        // html.view.canvas.drawImage(bitmap,0,0);//~ "draw" bitmap of current frame
+        // html.view.canvas.globalCompositeOperation="source-over";//~ restore default
+    // ------------------------------------------
     html.override.framesRender.dataset.render="1";
     html.override.clear.dataset.render=html.override.clear.checked?"1":"0";
     html.override.background.dataset.render=html.override.background.checked?"1":"0";
